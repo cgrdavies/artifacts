@@ -1,14 +1,21 @@
 services:
   artifacts:
     build: .
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     volumes:
       - artifacts-data:/app/data
     environment:
       - ARTIFACTS_URL=https://artifacts.yeeted.lol
       - PORT=3000
+    networks:
+      - default
     restart: unless-stopped
 
 volumes:
   artifacts-data:
+
+networks:
+  default:
+    external: true
+    name: pumpsense_default
