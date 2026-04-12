@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="${ARTIFACTS_URL:-http://localhost:3000}"
+
+usage() {
+  echo "Usage: artifacts-cli create --type <markdown|raw> [--content <text>] [--file <path>]"
+  exit 1
+}
+
+cmd_create() {
+  local type="" content="" file="" content_type=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --type) type="$2"; shift 2 ;;
+      --content) content="$2"; shift 2 ;;
+      --file) file="$2"; shift 2 ;;
+      *) echo "Unknown option: $1"; usage ;;
+    esac
+  done
+
+  [[ -z "$type" ]] && { echo "Error: --type is required"; usage; }
+
+  local json_body=""
+
+  if [[ "$type" == "markdown" ]]; then
+    if [[ -n "$file" ]]; then
+      content=$(cat "$file")
+    fi
+    [[ -z "$content" ]] && { echo "Error: --content or --file is required"; usage; }
+    json_body=$(jq -n --arg c "$content" --arg t "$type" '{content: $c, type: $t}')
+  elif [[ "$type" == "raw" ]]; then
+    [[ -z "$file" ]] && { echo "Error: --file is required for raw type"; usage; }
+    local b64
+    b64=$(base64 < "$file")
+    local filename
+    filename=$(basename "$file")
+    content_type=$(file --mime-type -b "$file" 2>/dev/null || echo "application/octet-stream")
+    json_body=$(jq -n \
+      --arg c "$b64" \
+      --arg t "$type" \
+      --arg f "$filename" \
+      --arg ct "$content_type" \
+      '{content: $c, type: $t, filename: $f, contentType: $ct}')
+  else
+    echo "Error: type must be 'markdown' or 'raw'"
+    usage
+  fi
+
+  local response
+  response=$(curl -s -X POST "${BASE_URL}/api/artifacts" \
+    -H "Content-Type: application/json" \
+    -d "$json_body")
+
+  local url
+  url=$(echo "$response" | jq -r '.url // empty')
+  if [[ -n "$url" ]]; then
+    echo "$url"
+  else
+    echo "Error: $(echo "$response" | jq -r '.error // "Unknown error"')" >&2
+    exit 1
+  fi
+}
+
+[[ $# -lt 1 ]] && usage
+
+case "$1" in
+  create) shift; cmd_create "$@" ;;
+  *) echo "Unknown command: $1"; usage ;;
+esac

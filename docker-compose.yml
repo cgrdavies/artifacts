@@ -1,0 +1,14 @@
+services:
+  artifacts:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - artifacts-data:/app/data
+    environment:
+      - ARTIFACTS_URL=https://artifacts.yeeted.lol
+      - PORT=3000
+    restart: unless-stopped
+
+volumes:
+  artifacts-data:
