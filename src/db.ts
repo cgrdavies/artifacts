@@ -1,9 +1,9 @@
-import Database from "better-sqlite3";
+import Database, { Database as DatabaseType, Statement } from "better-sqlite3";
 import path from "path";
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "..", "data", "artifacts.db");
 
-const db = new Database(DB_PATH);
+const db: DatabaseType = new Database(DB_PATH);
 
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
@@ -30,19 +30,19 @@ export interface Artifact {
   created_at: string;
 }
 
-export const insertArtifact = db.prepare<[string, string, string, string | null, string, number]>(
+export const insertArtifact: Statement<[string, string, string, string | null, string, number]> = db.prepare(
   `INSERT INTO artifacts (id, type, content, filename, content_type, size) VALUES (?, ?, ?, ?, ?, ?)`
 );
 
-export const getArtifact = db.prepare<[string]>(
+export const getArtifact: Statement<[string]> = db.prepare(
   `SELECT * FROM artifacts WHERE id = ?`
 );
 
-export const deleteArtifact = db.prepare<[string]>(
+export const deleteArtifact: Statement<[string]> = db.prepare(
   `DELETE FROM artifacts WHERE id = ?`
 );
 
-export const deleteOldArtifacts = db.prepare(
+export const deleteOldArtifacts: Statement = db.prepare(
   `DELETE FROM artifacts WHERE created_at < datetime('now', '-30 days')`
 );
 

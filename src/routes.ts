@@ -1,20 +1,10 @@
 import { Router, Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { marked } from "marked";
-import hljs from "highlight.js";
 import { insertArtifact, getArtifact, deleteArtifact, Artifact } from "./db";
 import { renderMarkdownPage } from "./views/markdown";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
-
-marked.setOptions({
-  highlight(code: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value;
-    }
-    return hljs.highlightAuto(code).value;
-  },
-});
 
 const router = Router();
 
@@ -57,12 +47,14 @@ router.post("/api/artifacts", (req: Request, res: Response) => {
 });
 
 router.delete("/api/artifacts/:id", (req: Request, res: Response) => {
-  deleteArtifact.run(req.params.id);
+  const id = req.params.id as string;
+  deleteArtifact.run(id);
   res.status(204).send();
 });
 
 router.get("/:id", (req: Request, res: Response) => {
-  const artifact = getArtifact.get(req.params.id) as Artifact | undefined;
+  const id = req.params.id as string;
+  const artifact = getArtifact.get(id) as Artifact | undefined;
 
   if (!artifact) {
     return res.status(404).send("Not found");
