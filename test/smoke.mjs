@@ -26,7 +26,7 @@ try{
  const source=fs.readFileSync(new URL('../examples/readable-write-ups.md',import.meta.url),'utf8');
  const created=await create({type:'markdoc',content:source});assert.equal(created.url,base+'/'+created.id);
  let r=await get('/'+created.id);assert.equal(r.status,200);const html=await r.text();
- for(const pattern of [/<h1>/,/<table>/,/class="callout/,/columns-2/,/<summary>/,/class="steps/,/hljs-addition/,/hljs-keyword/,/class="mermaid"/,/\/assets\/document.js/])assert.match(html,pattern);
+ for(const pattern of [/<h1\b/,/<table>/,/class="callout/,/columns-2/,/<summary>/,/class="steps/,/hljs-addition/,/hljs-keyword/,/class="mermaid"/,/\/assets\/document.js/])assert.match(html,pattern);
  assert.doesNotMatch(html,/cdnjs|fonts.googleapis/);
  assert.equal(await (await get('/'+created.id+'/content')).text(),source);
  assert.equal(await (await get('/'+created.id+'/download')).text(),source);
@@ -74,5 +74,32 @@ try{
  await assert.rejects(exec(process.execPath,[publisher,path.join(dir,'notes.md'),'--type','markdoc'],{env:{...process.env,ARTIFACTS_URL:base+'/missing'},timeout:30000}),e=>e.code===1&&/Nothing was uploaded/.test(e.stderr));
  assert.equal(db.prepare('SELECT count(*) AS n FROM artifacts').get().n,count);
  checks.push('skill publisher validates live local page/source/isolation and writes receipts; preflight failure uploads nothing');
+ const collectionDir=path.join(dir,'collection');fs.cpSync(new URL('../examples/collection/',import.meta.url),collectionDir,{recursive:true});
+ const collectionPublisher=new URL('../pi/skills/artifact-writeup/scripts/publish-collection.mjs',import.meta.url).pathname;
+ const manifestFile=path.join(collectionDir,'collection.json');
+ const published=await exec(process.execPath,[collectionPublisher,manifestFile],{env:{...process.env,ARTIFACTS_URL:base},timeout:60000});
+ const collectionUrl=published.stdout.trim(),collectionId=collectionUrl.split('/').at(-1);
+ const collection=await (await get('/api/collections/'+collectionId)).json();
+ const page0=collection.pages[0],page1=collection.pages[1],page2=collection.pages[2];
+ const firstHtml=await (await get('/c/'+collectionId+'/p/'+page0.id)).text();
+ assert.ok(firstHtml.includes(`href="/c/${collectionId}/p/${page1.id}"`));
+ assert.ok(firstHtml.includes(`href="/c/${collectionId}/p/${page2.id}#keep-a-copy"`));
+ assert.match(firstHtml,/aria-current="page"/);assert.match(firstHtml,/rel="next"/);
+ for(const mode of ['content','download']){const source=await get(`/c/${collectionId}/p/${page0.id}/${mode}`);assert.match(source.headers.get('content-type'),/^text\/plain; charset=utf-8$/i);assert.equal(await source.text(),page0.content);}
+ assert.match(await (await get('/c/'+collectionId+'/p/'+page2.id)).text(),/id="keep-a-copy"/);
+ const collectionManifest=JSON.parse(fs.readFileSync(manifestFile));collectionManifest.title='A revised guide';collectionManifest.pages.reverse();fs.writeFileSync(manifestFile,JSON.stringify(collectionManifest));fs.appendFileSync(path.join(collectionDir,'start.md'),'\nA checked update.\n');
+ await exec(process.execPath,[collectionPublisher,manifestFile,'--update',collectionId],{env:{...process.env,ARTIFACTS_URL:base},timeout:60000});
+ const updated=await (await get('/api/collections/'+collectionId)).json();
+ assert.equal(updated.expiresAt,collection.expiresAt);assert.equal(updated.pages.at(-1).id,page0.id);assert.equal(updated.pages[0].id,page2.id);
+ assert.match(await (await get('/c/'+collectionId+'/p/'+page0.id)).text(),/A checked update/);
+ assert.equal(JSON.parse(fs.readFileSync(manifestFile+'.artifact.json')).length,2);
+ const badLink=await fetch(base+'/api/collections',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:'Bad link',pages:[{key:'a.md',title:'A',type:'markdoc',content:'[Missing](missing.md)'}]})});assert.equal(badLink.status,400);
+ db.prepare("UPDATE collections SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(collectionId);
+ for(const suffix of ['',`/p/${page0.id}`,`/p/${page0.id}/content`,`/p/${page0.id}/download`])assert.equal((await get('/c/'+collectionId+suffix)).status,404);
+ assert.equal((await get('/api/collections/'+collectionId)).status,404);
+ assert.equal(require('../dist/db.js').deleteOldCollections.run().changes,1);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM collection_pages WHERE collection_id=?').get(collectionId).n,0);
+ checks.push('collection publisher create/update, stable IDs/order, relative links/anchors, shared expiry on every route and cascade cleanup');
+ const headings=renderDocument('# Intro\n\n# Intro\n\n# Intro 2').html;assert.match(headings,/id="intro"/);assert.match(headings,/id="intro-2"/);assert.match(headings,/id="intro-2-2"/);
  console.log(JSON.stringify({result:'PASS',node:process.version,checks},null,2));
 }finally{await new Promise(resolve=>server.close(resolve));db.close();fs.rmSync(dir,{recursive:true,force:true});}

@@ -65,7 +65,7 @@ function safeUrl(value: string, image: boolean): boolean {
 }
 
 /** Render the safe document subset. Invalid Markdoc throws an ordinary Error. */
-export function renderDocument(content: string): { title: string; html: string } {
+export function renderDocument(content: string, resolveLink?: (href: string) => string): { title: string; html: string } {
   // HTML is text, and fence contents are never parsed as Markdoc expressions.
   const tokenizer = new Markdoc.Tokenizer({ html: false });
   const tokens = tokenizer.tokenize(content);
@@ -74,10 +74,29 @@ export function renderDocument(content: string): { title: string; html: string }
   }
   const ast = Markdoc.parse(tokens);
   const codeBlocks = new Map<string, string>();
+  const headingIds = new Set<string>();
   const config: Config = {
     tags,
     nodes: {
       document: { ...Markdoc.nodes.document, render: 'div' },
+      heading: {
+        ...Markdoc.nodes.heading,
+        transform(node, cfg) {
+          const base = text(node).normalize('NFKD').replace(/\p{Mark}/gu, '').toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, '-').replace(/^-+|-+$/g, '') || 'section';
+          let id = base, suffix = 2;
+          while (headingIds.has(id)) id = `${base}-${suffix++}`;
+          headingIds.add(id);
+          return new Tag(`h${node.attributes.level}`, { id }, node.transformChildren(cfg));
+        },
+      },
+      link: {
+        ...Markdoc.nodes.link,
+        transform(node, cfg) {
+          const href = resolveLink ? resolveLink(String(node.attributes.href)) : String(node.attributes.href);
+          if (!safeUrl(href, false)) throw new Error('Unsafe link URL');
+          return new Tag('a', { href, ...(node.attributes.title ? { title: node.attributes.title } : {}) }, node.transformChildren(cfg));
+        },
+      },
       table: {
         ...Markdoc.nodes.table,
         transform(node, cfg) {

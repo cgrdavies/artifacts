@@ -7,7 +7,7 @@
     "build": "tsc && node scripts/build-assets.mjs",
     "start": "node dist/index.js",
     "dev": "node scripts/build-assets.mjs && tsx watch src/index.ts",
-    "test": "npm run build && node test/smoke.mjs && node --test test/cli.test.mjs",
+    "test": "npm run build && node test/smoke.mjs && node --test test/*.test.mjs",
     "test:browser": "npm run build && node test/browser.mjs"
   },
   "dependencies": {

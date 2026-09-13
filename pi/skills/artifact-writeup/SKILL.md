@@ -36,11 +36,15 @@ For richer structure, use the few built-in Markdoc components. Read [FORMAT.md](
 
 Save source files under `~/Documents/artifacts/`, with a descriptive filename. A `.md` file can contain Markdoc tags. A standalone `.html` file is the escape hatch; keep its CSS and any scripts inside the file. No remote libraries, fonts, tracking, or network calls. HTML runs in an isolated frame. A normal Markdoc page should be enough most of the time.
 
+For a longer write-up with distinct parts, use one flat collection with shared navigation and stable page links. Read [COLLECTIONS.md](references/COLLECTIONS.md) for the manifest, sibling links, and checked create/update commands. Keep its private edit receipt with the local sources; never publish or print it. Don't split a short answer into several pages.
+
+The shared layout follows the reader's system colors by default. Light or Dark saves a choice in that browser; System clears it. Don't add your own theme control to normal documents. Custom HTML may define its own colors.
+
 ## Sharing policy
 
 Read access is by unlisted link: no login, but anyone who gets a link can open it. Search engines are instructed not to index pages. This is the user's chosen policy for ordinary internal write-ups; do not add a login gate or ask the same permission question each time.
 
-Never include credentials, access tokens, or customer/personal data by default. If a requested document needs more protection, explain that and ask for a suitable destination. Do not treat a hard-to-guess link as encryption. There is no public document directory. Saved sources are the durable copy: hosted artifacts expire after about 30 days.
+Never include credentials, access tokens, or customer/personal data by default. If a requested document needs more protection, explain that and ask for a suitable destination. Do not treat a hard-to-guess link as encryption. There is no public document directory. Saved sources are the durable copy: hosted artifacts expire after about 30 days. All pages in a collection share one expiry date; edits do not extend it.
 
 ## Publish and check
 

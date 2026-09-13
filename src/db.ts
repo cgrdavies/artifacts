@@ -48,4 +48,31 @@ export const deleteOldArtifacts: Statement = db.prepare(
   `DELETE FROM artifacts WHERE created_at < datetime('now', '-30 days')`
 );
 
+// Collections are independent of the original artifacts table and retention rules.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    edit_token_hash TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS collection_pages (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('markdown', 'markdoc', 'html')),
+    content TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    UNIQUE (collection_id, key),
+    UNIQUE (collection_id, position)
+  );
+  CREATE INDEX IF NOT EXISTS collections_expiry ON collections(expires_at);
+`);
+
+export const deleteOldCollections: Statement = db.prepare(
+  `DELETE FROM collections WHERE julianday(expires_at) <= julianday('now')`
+);
+
 export default db;

@@ -12,7 +12,7 @@ Write Markdown for most documents. Add a few Markdoc blocks when they help. Use 
 - Five Markdoc blocks: callout, columns, card, details and steps.
 - Standalone HTML with inline CSS and scripts, kept in an isolated frame.
 
-The service provides readable type, restrained colors, light/dark styles and phone layouts. Wide diagrams scroll rather than shrinking their labels. Ordinary pages do not download the diagram renderer. All assets are served locally.
+The service provides readable type, restrained colors, light/dark styles and phone layouts. Wide diagrams scroll rather than shrinking their labels. Ordinary pages do not download the diagram renderer. All assets are served locally. The theme defaults to System; Light or Dark saves a choice in that browser. Choosing System clears the override. Diagram colors update too. Custom HTML keeps its own styling.
 
 See [the format guide](pi/skills/artifact-writeup/references/FORMAT.md) and [the example document](examples/readable-write-ups.md). [The HTML example](examples/focused-visual.html) shows when a custom page helps.
 
@@ -37,12 +37,25 @@ ARTIFACTS_URL=https://artifacts.yeeted.lol ./artifacts-cli create --type raw --f
 
 The CLI alone defaults to localhost and does not perform the publisher's full checks. File uploads are streamed from temporary files rather than passed as large command arguments.
 
+## Collections
+
+Group related documents into one ordered collection. Each page has a stable link, shared contents, and previous/next navigation. On phones, the contents fit in a Pages menu. All pages expire together, 30 days after creation; editing does not renew the date.
+
+```sh
+node pi/skills/artifact-writeup/scripts/publish-collection.mjs /path/to/collection.json
+node pi/skills/artifact-writeup/scripts/publish-collection.mjs /path/to/collection.json --update COLLECTION_ID
+```
+
+See the [manifest and editing guide](pi/skills/artifact-writeup/references/COLLECTIONS.md) and [three-page example](examples/collection/collection.json). Keep keys fixed when editing titles, files, or reading order. Markdown links such as `[Design](design.md#trade-offs)` resolve to stable page links. Updates replace the full list; removed pages stop working. There are no folders or file-browser controls yet.
+
+The local receipt contains a private edit key. Keep it with the sources, and never share or commit it. Read links need no login; editing and deleting a collection require that key.
+
 ## Links, search and privacy
 
 - All app responses send `X-Robots-Tag: noindex, nofollow, nosnippet, noimageindex` and `Referrer-Policy: no-referrer`.
 - `robots.txt` allows fetching so search engines can see the no-index header. There is no public directory or sitemap.
 - These are unlisted links, not private accounts. Anyone who gets a link can read it. No-index is a request to search engines, not authentication.
-- The existing create/delete API also has no authentication. Knowing an artifact ID allows deletion.
+- The legacy single-artifact create/delete API has no authentication. Knowing an artifact ID allows deletion. Collections use a separate edit key for updates and deletion; public metadata never returns it.
 - Markdown HTML is shown as text. Unknown tags, expressions, file includes and unsafe parsed URLs are rejected.
 - HTML and raw HTML/SVG use an isolated frame. Direct content URLs also carry sandbox restrictions. Inline interaction is allowed; fetch requests, site storage, parent-page access, remote libraries and other frames are blocked. This is browser isolation, not a guarantee against every possible navigation or malicious page.
 - Off-site document images and other remote page assets are blocked. Upload images here first. Ordinary external text links still work.
@@ -58,8 +71,16 @@ The CLI alone defaults to localhost and does not perform the publisher's full ch
 | `GET /:id/content` | Read its original content |
 | `GET /:id/download` | Download its source |
 | `DELETE /api/artifacts/:id` | Remove it |
+| `POST /api/collections` | Create `{title, pages: [{key, title, type, content}]}`; returns the edit token once |
+| `GET /api/collections/:id` | Public metadata and page sources |
+| `PUT /api/collections/:id` | Replace title/pages; include existing page `id` values to keep links |
+| `DELETE /api/collections/:id` | Remove the collection and its pages |
+| `GET /c/:id` | Collection contents |
+| `GET /c/:id/p/:pageId` | Read a page; append `/content` or `/download` for its source |
 
-Types are `markdown`, `markdoc`, `html` and `raw`. Raw content is base64. The limit is 10 MiB of decoded content; the JSON body limit is 15 MiB to fit a full-size encoded file. New formats use the existing database schema, so there is no table migration. Older Markdown that cannot be rendered is still readable as escaped source.
+Types are `markdown`, `markdoc`, `html` and `raw`. Raw content is base64. The limit is 10 MiB of decoded content; the JSON body limit is 15 MiB to fit a full-size encoded file. Single artifacts keep their existing table. Collections add two tables automatically without changing older artifacts. Older Markdown that cannot be rendered is still readable as escaped source.
+
+Collection pages support `markdown`, `markdoc`, and `html`, all as original UTF-8 text, not base64. A collection allows 1–50 pages and 10 MiB total content. Create returns `id`, `url`, `createdAt`, `expiresAt`, `pages`, and a one-time `editToken`. Each page includes its own `id`, `key`, `title`, `type`, `content`, `position`, and `url`. Keep the token out of shared links and logs. PUT/DELETE require `Authorization: Bearer <editToken>`. Missing or wrong tokens return 403; expired or missing collections return 404. Page IDs supplied to PUT must belong to that collection. Validation happens before an atomic replacement. Concurrent updates replace, rather than merge, the previous version.
 
 ## Local checks
 

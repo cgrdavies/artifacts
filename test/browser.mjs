@@ -19,7 +19,8 @@ let browser;const report={checks:[]};
 async function create(type,content){const r=await fetch(base+'/api/artifacts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,content})});assert.equal(r.status,201,await r.clone().text());return (await r.json()).url;}
 try{
  browser=await chromium.launch({headless:true,...(fs.existsSync(chrome)?{executablePath:chrome}:{})});
- const page=await browser.newPage({viewport:{width:1100,height:900},colorScheme:'light'});
+ const context=await browser.newContext({viewport:{width:1100,height:900},colorScheme:'light'});
+ const page=await context.newPage();
  const errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
  const doc=await create('markdoc',fs.readFileSync('examples/readable-write-ups.md','utf8'));
  await page.goto(doc);await page.locator('.diagram svg').waitFor();
@@ -61,6 +62,42 @@ try{
  const attack=await create('markdown','# Safe text\n\n<script>document.body.dataset.escaped="yes"</script>\n\n<img src=x onerror="alert(1)">');
  await page.goto(attack);assert.equal(await page.evaluate(()=>document.body.dataset.escaped),undefined);assert.equal(await page.locator('article script, article img').count(),0);
  report.checks.push('raw HTML in Markdown remains text, not running elements');
+ const manifest=JSON.parse(fs.readFileSync('examples/collection/collection.json','utf8'));
+ const collectionPayload={title:manifest.title,pages:manifest.pages.map(p=>({key:p.key,title:p.title,type:p.type,content:fs.readFileSync('examples/collection/'+p.file,'utf8')}))};
+ collectionPayload.pages.push({key:'visual.html',title:'Try a visual',type:'html',content:fs.readFileSync('examples/focused-visual.html','utf8')});
+ const cr=await fetch(base+'/api/collections',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(collectionPayload)});assert.equal(cr.status,201);const collection=await cr.json();
+ await page.setViewportSize({width:1200,height:900});await page.goto(collection.url);
+ await page.locator('.document a').first().click();assert.equal(page.url(),collection.pages[0].url);
+ await page.locator('.document').getByRole('link',{name:'choose a useful view',exact:true}).click();assert.equal(page.url(),collection.pages[1].url);await page.locator('.diagram svg').waitFor();
+ assert.equal(await page.locator('.collection-sidebar [aria-current="page"]').count(),1);
+ assert.equal(await page.locator('a[rel="prev"]').getAttribute('href'),new URL(collection.pages[0].url).pathname);
+ assert.equal(await page.locator('a[rel="next"]').getAttribute('href'),new URL(collection.pages[2].url).pathname);
+ await page.screenshot({path:path.join(out,'collection-desktop.png'),fullPage:true});
+ const oldDiagram=await page.locator('.diagram svg').getAttribute('id');
+ await page.getByLabel('Color theme').selectOption('dark');await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+ await page.waitForFunction(old=>document.querySelector('.diagram svg')?.id!==old,oldDiagram);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('artifacts-theme')),'dark');
+ assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme),'dark');
+ await page.screenshot({path:path.join(out,'collection-dark.png'),fullPage:true});
+ await page.locator('a[rel="next"]').click();assert.equal(page.url(),collection.pages[2].url);assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+ await page.reload();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+ const tab=await page.context().newPage();await tab.goto(collection.pages[0].url);assert.equal(await tab.locator('html').getAttribute('data-theme'),'dark');
+ await tab.getByLabel('Color theme').selectOption('light');await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+ await page.emulateMedia({colorScheme:'dark'});assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
+ await page.getByLabel('Color theme').selectOption('system');await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('artifacts-theme')),null);await page.emulateMedia({colorScheme:'light'});await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');await tab.close();
+ await page.goto(collection.pages[3].url);await page.getByLabel('Color theme').selectOption('dark');
+ assert.equal(await page.locator('iframe').evaluate(e=>getComputedStyle(e).colorScheme),'dark');
+ await page.frameLocator('iframe').locator('#balance').focus();await page.frameLocator('iframe').locator('#balance').press('ArrowRight');assert.equal(await page.frameLocator('iframe').locator('#value').textContent(),'76%');
+ await page.getByLabel('Color theme').selectOption('system');await page.goto(collection.pages[0].url);await page.locator('.document').getByRole('link',{name:'sharing',exact:true}).click();assert.equal(page.url(),collection.pages[2].url+'#keep-a-copy');
+ await page.setViewportSize({width:390,height:844});await page.goto(collection.pages[1].url);await page.locator('.diagram svg').waitFor();
+ await page.locator('.collection-mobile > summary').click();assert.equal(await page.locator('.collection-mobile[open]').count(),1);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:path.join(out,'collection-mobile.png'),fullPage:true});
+ await page.locator('.collection-mobile').getByRole('link',{name:'Start here',exact:true}).click();assert.equal(page.url(),collection.pages[0].url);
+ const unavailable=await browser.newContext({colorScheme:'dark'});await unavailable.addInitScript(()=>{Object.defineProperty(Storage.prototype,'getItem',{value(){throw Error('Disabled')}});Object.defineProperty(Storage.prototype,'setItem',{value(){throw Error('Disabled')}});Object.defineProperty(Storage.prototype,'removeItem',{value(){throw Error('Disabled')}});});
+ const blockedPage=await unavailable.newPage();await blockedPage.goto(collection.url);assert.equal(await blockedPage.locator('html').getAttribute('data-theme'),'dark');await blockedPage.getByLabel('Color theme').selectOption('light');assert.equal(await blockedPage.locator('html').getAttribute('data-theme'),'light');await unavailable.close();
+ const bootContext=await browser.newContext({colorScheme:'light'});await bootContext.addInitScript(()=>localStorage.setItem('artifacts-theme','dark'));const bootPage=await bootContext.newPage();await bootPage.route('**/assets/document.js',route=>route.abort());await bootPage.goto(collection.url);assert.equal(await bootPage.locator('html').getAttribute('data-theme'),'dark');assert.equal(await bootPage.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(21, 25, 31)');await bootContext.close();
+ report.checks.push('collection sidebar/mobile contents/prev-next/relative links/anchors; saved theme survives navigation/reload/tabs; system changes, blocked storage, and saved colors before the main script; diagrams redraw and the HTML frame receives the chosen color-scheme style');
  report.result='PASS';
 }catch(e){report.result='FAIL';report.error=e.stack;}
 finally{await browser?.close();await new Promise(r=>server.close(r));db.close();fs.rmSync(dir,{recursive:true,force:true});fs.writeFileSync(path.join(out,'browser-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));process.exitCode=report.result==='PASS'?0:1;}

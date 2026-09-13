@@ -62,9 +62,11 @@ Markdown headings, lists, quotes, tables, links, and images work. Use images upl
 
 Only the five blocks above are supported. There are no imports, expressions, custom functions, file includes, or arbitrary HTML in Markdown. Raw HTML is displayed as text. Unknown tags and unsupported attributes are rejected.
 
+For several related pages, see [COLLECTIONS.md](COLLECTIONS.md). It explains shared navigation, links by page key, and stable edits.
+
 ## Full HTML, when needed
 
-Use `--type html` for one focused visual page. Include `<!doctype html>`, UTF-8, a viewport tag, clear headings, responsive CSS, and a title. Keep styles and any scripts inline. Use system fonts. Make controls work by keyboard and label them. Keep prose simple and concise.
+Use `--type html` for one focused visual page. Include `<!doctype html>`, UTF-8, a viewport tag, clear headings, responsive CSS, and a title. Keep styles and any scripts inline. Use system fonts. Make controls work by keyboard and label them. Keep prose simple and concise. Support light and dark colors with `prefers-color-scheme` when useful. The outer viewer has a saved theme choice, but custom HTML retains its own styling.
 
 The page runs in an isolated frame. Its inline scripts can update its own document, but it cannot fetch data, read the site's storage, submit forms, open popups, load remote libraries, or embed other frames. Do not add `allow-same-origin` or work around these restrictions. Prefer Markdown and the built-in blocks unless custom interaction or layout is the point.
 

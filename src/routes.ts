@@ -21,6 +21,8 @@ router.get("/api/capabilities", (_req, res) => res.json({
   components: ["callout", "columns", "card", "details", "steps"],
   diagrams: ["mermaid"], readAccess: "unlisted", indexing: "noindex",
   htmlIsolation: "sandbox", retentionDays: 30,
+  collections: { version: 1, maxPages: 50, stablePageLinks: true, sharedExpiry: true, editTokenRequired: true },
+  theme: { system: true, savedPreference: true },
 }));
 
 router.post("/api/artifacts", (req: Request, res: Response) => {
@@ -112,7 +114,7 @@ router.get("/:id", (req: Request, res: Response) => {
   }
   if (activeFile(artifact)) {
     const title = artifact.filename || "Interactive page";
-    return res.type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,nosnippet,noimageindex"><title>${escape(title)}</title><style>body{margin:0;font:15px system-ui;background:#f5f6f8;color:#252a34}header{padding:12px 20px;display:flex;justify-content:space-between;gap:16px}a{color:inherit}iframe{display:block;border:0;width:100%;height:calc(100dvh - 48px);background:white}</style></head><body><header><span>${escape(title)}</span><a href="/${artifact.id}/download">Download</a></header><iframe title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe></body></html>`);
+    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe><p><a href="/${artifact.id}/download">Download</a></p>`));
   }
   res.set("Content-Security-Policy", UPLOAD_CSP);
   res.type(artifact.content_type);

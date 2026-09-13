@@ -1,0 +1,8 @@
+{
+  "title": "A small guide to clear write-ups",
+  "pages": [
+    { "key": "start.md", "title": "Start here", "file": "start.md", "type": "markdoc" },
+    { "key": "views.md", "title": "Choose a useful view", "file": "views.md", "type": "markdoc" },
+    { "key": "sharing.md", "title": "Share and keep the source", "file": "sharing.md", "type": "markdoc" }
+  ]
+}
