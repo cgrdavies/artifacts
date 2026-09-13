@@ -63,9 +63,9 @@ The local receipt contains a private edit key. Keep it with the sources, and nev
 
 ## Give a coding agent the context
 
-Open a collection and choose **Download collection Markdown** or **Download collection text**. Both save one UTF-8 file containing all pages in reading order, with the collection title, page titles, and page keys. The `.txt` version keeps the same Markdown source rather than stripping code, links, diagrams, or Markdoc blocks. HTML pages are included as fenced HTML source, not executed or converted from their visual layout. Downloads never include the collection's edit key.
+Choose **Export collection** beneath the contents list, then **Markdown (.md)** or **Text file (.txt)**. On phones, open **Collection** to find the contents and export menu. Both save one UTF-8 file containing all pages in reading order, with the collection title, page titles, and page keys. The `.txt` version keeps the same Markdown source rather than stripping code, links, diagrams, or Markdoc blocks. HTML pages are included as fenced HTML source, not executed or converted from their visual layout. Downloads never include the collection's edit key.
 
-Every document page, including standalone Markdown and HTML pages, has **Copy Markdown**. It copies saved Markdown/Markdoc exactly; HTML is wrapped in a code fence. If clipboard access is blocked, a selected text box lets you copy manually. **View Markdown** also works without JavaScript. Review the content before giving it to another service; the existing unlisted-link sharing and expiry rules still apply.
+Every document page, including standalone Markdown and HTML pages, has **Copy page** beside its page position. It copies saved Markdown/Markdoc exactly; HTML is wrapped in a code fence. If clipboard access is blocked, a selected text box lets you copy manually. The adjacent page menu contains **View Markdown source** and **Download page source**, both available without JavaScript. Successful copying changes the button to **Copied**. Appearance settings sit in the collection header, separate from document actions. Review the content before giving it to another service; the existing unlisted-link sharing and expiry rules still apply.
 
 ## API
 

@@ -30,10 +30,16 @@ try{
  await page.setViewportSize({width:390,height:844});await page.goto(collection.pages[1].url);await page.locator('.diagram svg').waitFor();await page.locator('.collection-mobile > summary').click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:'test-results/live-collection-mobile.png',fullPage:true});
  await page.locator('.collection-mobile').getByRole('link',{name:'Start here',exact:true}).click();assert.equal(page.url(),collection.pages[0].url);await page.locator('.document').getByRole('link',{name:'sharing',exact:true}).click();assert.equal(page.url(),collection.pages[2].url+'#keep-a-copy');
  await page.goto(collection.pages[0].url);
- await page.getByRole('button',{name:'Copy Markdown',exact:true}).click();
+ await page.getByRole('button',{name:'Copy page as Markdown',exact:true}).click();
+ await page.getByRole('button',{name:'Copy page as Markdown',exact:true}).filter({hasText:'Copied'}).waitFor();
  await page.getByRole('status').filter({hasText:'Markdown copied.'}).waitFor();
  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),collection.pages[0].content);
- const downloadEvent=page.waitForEvent('download');await page.getByRole('link',{name:'Download collection Markdown',exact:true}).click();const download=await downloadEvent;
+ const sidebar=page.locator('.collection-sidebar');
+ const navigation=await sidebar.isVisible()?sidebar:page.locator('.collection-mobile');
+ if(await navigation.evaluate(e=>e.tagName==='DETAILS'&&!e.open))await navigation.locator(':scope > summary').click();
+ const exportMenu=navigation.locator('details.collection-export');
+ if(!await exportMenu.evaluate(e=>e.open))await exportMenu.locator(':scope > summary').click();
+ const downloadEvent=page.waitForEvent('download');await exportMenu.getByRole('link',{name:'Download collection Markdown',exact:true}).click();const download=await downloadEvent;
  assert.match(download.suggestedFilename(),/\.md$/);assert.equal(fs.readFileSync(await download.path(),'utf8'),markdown);
  report.checks.push('live mobile UI copies exact source using real browser clipboard and downloads the complete Markdown file');
  if(process.env.HTML_SAMPLE_URL){const htmlUrl=new URL(process.env.HTML_SAMPLE_URL);assert.equal(htmlUrl.origin,base);const source=await get(htmlUrl.href+'/content');assert.match(source.headers.get('content-security-policy')||'',/sandbox allow-scripts/);assert.doesNotMatch(source.headers.get('content-security-policy')||'',/allow-same-origin/);await source.arrayBuffer();await page.goto(htmlUrl.href);assert.equal(await page.locator('iframe').getAttribute('sandbox'),'allow-scripts');await page.frameLocator('iframe').locator('#balance').focus();await page.frameLocator('iframe').locator('#balance').press('ArrowRight');assert.equal(await page.frameLocator('iframe').locator('#value').textContent(),'76%');report.checks.push('existing live HTML still has isolated direct content and working keyboard interaction');}

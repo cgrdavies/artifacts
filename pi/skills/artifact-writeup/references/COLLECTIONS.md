@@ -43,7 +43,7 @@ Read [the design](design.md), or jump to [its trade-offs](design.md#trade-offs).
 
 The service converts those links into stable page URLs. `./design.md` also works. Heading anchors use lowercase words joined by hyphens; repeated headings get a numeric suffix. Unknown relative page links are rejected before saving. Use full URLs for outside links. HTML source is kept unchanged, so relative sibling links are not rewritten inside custom HTML.
 
-The service adds shared contents, a phone-friendly Pages menu, and previous/next links. Don't build those yourself. The collection and every page share one expiry date, 30 days after creation. Edits do not renew it.
+The service adds shared contents, a phone-friendly Collection menu, collection exports, page copy/source actions, and previous/next links. Don't build those yourself. The collection and every page share one expiry date, 30 days after creation. Edits do not renew it.
 
 ## Publish
 

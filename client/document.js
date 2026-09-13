@@ -33,6 +33,20 @@ window.addEventListener('storage', event => {
   applyTheme();
 });
 
+// Native disclosures stay usable without JavaScript; enhance dismiss/focus behavior.
+document.addEventListener('click', event => {
+  for (const menu of document.querySelectorAll('.action-menu[open]')) {
+    if (!menu.contains(event.target)) menu.open = false;
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const menus = [...document.querySelectorAll('.action-menu[open]')];
+  const focused = menus.find(menu => menu.contains(document.activeElement));
+  for (const menu of menus) menu.open = false;
+  focused?.querySelector('summary')?.focus();
+});
+
 // Copy saved source, not rendered DOM: diagrams and code retain their original text.
 for (const button of document.querySelectorAll('[data-copy-markdown]')) {
   button.disabled = false;
@@ -41,6 +55,8 @@ for (const button of document.querySelectorAll('[data-copy-markdown]')) {
     const status = actions.querySelector('[data-copy-status]');
     const fallback = actions.querySelector('[data-markdown-fallback]');
     button.disabled = true;
+    button.textContent = 'Copying…';
+    status.removeAttribute('data-error');
     status.textContent = 'Loading Markdown…';
     fallback.parentElement.hidden = true;
     try {
@@ -49,18 +65,22 @@ for (const button of document.querySelectorAll('[data-copy-markdown]')) {
       const markdown = await response.text();
       try {
         await navigator.clipboard.writeText(markdown);
+        button.textContent = 'Copied';
         status.textContent = 'Markdown copied.';
       } catch {
         fallback.value = markdown;
         fallback.parentElement.hidden = false;
         fallback.focus();
         fallback.select();
+        status.setAttribute('data-error', '');
         status.textContent = 'Clipboard unavailable. Copy the selected Markdown below.';
       }
     } catch {
-      status.textContent = 'Could not load Markdown. Try again or use View Markdown.';
+      status.setAttribute('data-error', '');
+      status.textContent = 'Could not load Markdown. Try again or open View Markdown source in the page menu.';
     } finally {
       button.disabled = false;
+      if (button.textContent !== 'Copied') button.textContent = 'Copy page';
     }
   });
 }

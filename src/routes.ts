@@ -127,7 +127,7 @@ router.get("/:id", (req: Request, res: Response) => {
   }
   if (activeFile(artifact)) {
     const title = artifact.filename || "Interactive page";
-    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe><p><a href="/${artifact.id}/download">Download</a></p>`, undefined, `/${artifact.id}/markdown`));
+    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe>`, undefined, `/${artifact.id}/markdown`));
   }
   res.set("Content-Security-Policy", UPLOAD_CSP);
   res.type(artifact.content_type);

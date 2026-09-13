@@ -45,7 +45,7 @@ collectionViews.get('/c/:collectionId/p/:pageId', (req,res)=>{
   if (!page || !nav) return res.status(404).send('Not found');
   let html: string;
   if (page.type==='html') {
-    html=`<h1>${escape(page.title)}</h1><iframe class="artifact-frame" title="${escape(page.title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/c/${collectionId}/p/${pageId}/content"></iframe><p><a href="/c/${collectionId}/p/${pageId}/download">Download this page</a></p>`;
+    html=`<h1>${escape(page.title)}</h1><iframe class="artifact-frame" title="${escape(page.title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/c/${collectionId}/p/${pageId}/content"></iframe>`;
   } else {
     const links = new Map(getPages(collectionId).map(p=>[p.key,`/c/${collectionId}/p/${p.id}`]));
     const resolveLink = (href: string) => {
