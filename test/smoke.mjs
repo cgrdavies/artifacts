@@ -1,0 +1,78 @@
+// Local-only HTTP checks against the real app and a temporary database.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import { createRequire } from 'node:module';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const require=createRequire(import.meta.url),exec=promisify(execFile);
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'artifacts-smoke-'));
+process.env.DB_PATH=path.join(dir,'nested','artifacts.db');
+let app;
+const server=http.createServer((req,res)=>app?app(req,res):res.end());
+server.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+const base='http://127.0.0.1:'+server.address().port;process.env.ARTIFACTS_URL=base;
+app=require('../dist/app.js').createApp();
+const {default:db,deleteOldArtifacts}=require('../dist/db.js');
+const {renderDocument}=require('../dist/render.js');
+const checks=[];
+function privacy(r){assert.match(r.headers.get('x-robots-tag')??'',/noindex/);assert.equal(r.headers.get('referrer-policy'),'no-referrer');assert.equal(r.headers.get('x-content-type-options'),'nosniff');}
+const get=async p=>{const r=await fetch(base+p);privacy(r);return r;};
+const post=async body=>{const r=await fetch(base+'/api/artifacts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});privacy(r);return r;};
+async function create(body){const r=await post(body);assert.equal(r.status,201,await r.clone().text());return r.json();}
+try{
+ const source=fs.readFileSync(new URL('../examples/readable-write-ups.md',import.meta.url),'utf8');
+ const created=await create({type:'markdoc',content:source});assert.equal(created.url,base+'/'+created.id);
+ let r=await get('/'+created.id);assert.equal(r.status,200);const html=await r.text();
+ for(const pattern of [/<h1>/,/<table>/,/class="callout/,/columns-2/,/<summary>/,/class="steps/,/hljs-addition/,/hljs-keyword/,/class="mermaid"/,/\/assets\/document.js/])assert.match(html,pattern);
+ assert.doesNotMatch(html,/cdnjs|fonts.googleapis/);
+ assert.equal(await (await get('/'+created.id+'/content')).text(),source);
+ assert.equal(await (await get('/'+created.id+'/download')).text(),source);
+ checks.push('Markdoc blocks, code/diff/tree/diagram markup, saved source, no external page assets');
+ const markdown=await create({type:'markdown',content:'# Plain Markdown\n\n**Readable** notes.'});
+ assert.match(await (await get('/'+markdown.id)).text(),/<strong>Readable<\/strong>/);
+ checks.push('plain Markdown remains supported');
+ const bytes=Buffer.from([0,1,2,127,128,254,255]);const raw=await create({type:'raw',content:bytes.toString('base64'),filename:'smoke.bin',contentType:'application/octet-stream'});
+ r=await get('/'+raw.id);assert.deepEqual(Buffer.from(await r.arrayBuffer()),bytes);assert.match(r.headers.get('content-disposition'),/attachment/);
+ const maximum=Buffer.alloc(10*1024*1024,42);const big=await create({type:'raw',content:maximum.toString('base64'),filename:'ten-mib.bin'});
+ assert.deepEqual(Buffer.from(await (await get('/'+big.id+'/download')).arrayBuffer()),maximum);
+ assert.equal((await post({type:'raw',content:Buffer.alloc(maximum.length+1).toString('base64')})).status,413);
+ checks.push('binary round trip; full 10 MiB decoded file accepted; larger file rejected');
+ const visualSource=fs.readFileSync(new URL('../examples/focused-visual.html',import.meta.url),'utf8');
+ const visual=await create({type:'html',content:visualSource,filename:'visual.html'});
+ r=await get('/'+visual.id);assert.match(await r.text(),/sandbox="allow-scripts"/);
+ r=await get('/'+visual.id+'/content');assert.equal(await r.text(),visualSource);assert.match(r.headers.get('content-security-policy'),/sandbox allow-scripts/);assert.doesNotMatch(r.headers.get('content-security-policy'),/allow-same-origin/);
+ const legacyHtml=await create({type:'raw',content:Buffer.from(visualSource).toString('base64'),contentType:'text/html'});
+ assert.match(await (await get('/'+legacyHtml.id)).text(),/<iframe/);
+ const svg=await create({type:'raw',content:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64'),contentType:'image/svg+xml'});
+ assert.match(await (await get('/'+svg.id)).text(),/<iframe/);
+ checks.push('HTML and legacy raw HTML/SVG isolated, including direct content URLs');
+ for(const body of [{},[],{content:{} ,type:'markdown'},{type:'unknown',content:'x'},{type:'raw',content:'%%%%'},{type:'raw',content:'ab=='},{type:'markdown',content:'# X',filename:'bad\r\nName'},{type:'raw',content:'eA==',contentType:'text/html\r\nX-Test: yes'}])assert.equal((await post(body)).status,400);
+ for(const content of ['{% unknown /%}','{% partial file="/etc/passwd" /%}','{% callout tone="danger" %}x{% /callout %}','{% columns count=4 %}x{% /columns %}','{% details %}x{% /details %}','{% callout title=$secret %}x{% /callout %}','{% card onclick="alert(1)" %}x{% /card %}'])assert.equal((await post({type:'markdoc',content})).status,400,content);
+ const escaped=renderDocument('# <script>alert(1)</script>\n\n<script>alert(2)</script>\n\n[bad](javascript:alert(1))');assert.doesNotMatch(escaped.html,/<script|href="javascript:/);
+ assert.match(renderDocument('```text\n{% partial file="/etc/passwd" /%}\n```').html,/{% partial/);
+ const malformed=await fetch(base+'/api/artifacts',{method:'POST',headers:{'content-type':'application/json'},body:'{'});privacy(malformed);assert.equal(malformed.status,400);assert.equal((await malformed.json()).error,'Send a valid JSON object.');
+ checks.push('bad input, includes, expressions and unsafe attributes rejected; literal code stays literal');
+ const legacyId='legacy-document';db.prepare('INSERT INTO artifacts(id,type,content,size) VALUES(?,?,?,?)').run(legacyId,'markdown','{% unknown /%}',15);
+ r=await get('/'+legacyId);assert.equal(r.status,200);assert.match(await r.text(),/Here is the saved text/);
+ const robots=await get('/robots.txt');assert.equal(robots.status,200);assert.doesNotMatch(await robots.text(),/Disallow:\s*\//);
+ r=await get('/api/capabilities');assert.equal((await r.json()).version,2);await get('/missing');await get('/assets/missing.js');
+ checks.push('no-index on success/errors/source/assets; robots allows header discovery; old invalid documents remain readable');
+ r=await fetch(base+'/api/artifacts/'+markdown.id,{method:'DELETE'});privacy(r);assert.equal(r.status,204);assert.equal((await get('/'+markdown.id)).status,404);
+ db.prepare("UPDATE artifacts SET created_at=datetime('now','-31 days') WHERE id=?").run(raw.id);assert.equal(deleteOldArtifacts.run().changes,1);assert.equal((await get('/'+raw.id)).status,404);
+ checks.push('delete and 30-day cleanup');
+ const publisher=new URL('../pi/skills/artifact-writeup/scripts/publish.mjs',import.meta.url).pathname;
+ for(const [type,name,contents] of [['markdoc','notes.md',source],['html','visual.html',visualSource],['raw','bytes.bin',bytes]]){
+  const file=path.join(dir,name);fs.writeFileSync(file,contents);
+  const result=await exec(process.execPath,[publisher,file,'--type',type],{env:{...process.env,ARTIFACTS_URL:base},timeout:60000});
+  assert.match(result.stdout.trim(),new RegExp('^'+base+'/'));
+  const receipt=JSON.parse(fs.readFileSync(file+'.artifact.json'));assert.equal(receipt.length,1);assert.equal(receipt[0].type,type);
+ }
+ const count=db.prepare('SELECT count(*) AS n FROM artifacts').get().n;
+ await assert.rejects(exec(process.execPath,[publisher,path.join(dir,'notes.md'),'--type','markdoc'],{env:{...process.env,ARTIFACTS_URL:base+'/missing'},timeout:30000}),e=>e.code===1&&/Nothing was uploaded/.test(e.stderr));
+ assert.equal(db.prepare('SELECT count(*) AS n FROM artifacts').get().n,count);
+ checks.push('skill publisher validates live local page/source/isolation and writes receipts; preflight failure uploads nothing');
+ console.log(JSON.stringify({result:'PASS',node:process.version,checks},null,2));
+}finally{await new Promise(resolve=>server.close(resolve));db.close();fs.rmSync(dir,{recursive:true,force:true});}

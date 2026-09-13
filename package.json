@@ -4,21 +4,26 @@
   "description": "Lightweight artifact sharing service",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-assets.mjs",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "node scripts/build-assets.mjs && tsx watch src/index.ts",
+    "test": "npm run build && node test/smoke.mjs && node --test test/cli.test.mjs",
+    "test:browser": "npm run build && node test/browser.mjs"
   },
   "dependencies": {
+    "@markdoc/markdoc": "^0.5.9",
     "better-sqlite3": "^11.7.0",
     "express": "^4.21.0",
     "highlight.js": "^11.10.0",
-    "marked": "^15.0.0",
     "uuid": "^11.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.0",
     "@types/uuid": "^10.0.0",
+    "esbuild": "^0.28.2",
+    "mermaid": "^11.17.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

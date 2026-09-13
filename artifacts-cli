@@ -2,70 +2,88 @@
 set -euo pipefail
 
 BASE_URL="${ARTIFACTS_URL:-http://localhost:3000}"
+BASE_URL="${BASE_URL%/}"
+TEMP_DIR=""
+cleanup() { [[ -z "$TEMP_DIR" ]] || rm -rf -- "$TEMP_DIR"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
+fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 usage() {
-  echo "Usage: artifacts-cli create --type <markdown|raw> [--content <text>] [--file <path>]"
+  printf 'Usage: artifacts-cli create --type <markdown|markdoc|html|raw> (--file <path> | --content <text>)\n' >&2
   exit 1
 }
 
 cmd_create() {
-  local type="" content="" file="" content_type=""
-
+  local type="" content="" input_file="" has_content=0 has_file=0 has_type=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --type) type="$2"; shift 2 ;;
-      --content) content="$2"; shift 2 ;;
-      --file) file="$2"; shift 2 ;;
-      *) echo "Unknown option: $1"; usage ;;
+      --type|--content|--file)
+        [[ $# -ge 2 && "$2" != --* ]] || fail "Missing value for $1"
+        case "$1" in
+          --type) [[ $has_type -eq 0 ]] || fail 'Repeated --type'; type="$2"; has_type=1 ;;
+          --content) [[ $has_content -eq 0 ]] || fail 'Repeated --content'; content="$2"; has_content=1 ;;
+          --file) [[ $has_file -eq 0 ]] || fail 'Repeated --file'; input_file="$2"; has_file=1 ;;
+        esac
+        shift 2 ;;
+      *) fail "Unknown option: $1" ;;
     esac
   done
-
-  [[ -z "$type" ]] && { echo "Error: --type is required"; usage; }
-
-  local json_body=""
-
-  if [[ "$type" == "markdown" ]]; then
-    if [[ -n "$file" ]]; then
-      content=$(cat "$file")
-    fi
-    [[ -z "$content" ]] && { echo "Error: --content or --file is required"; usage; }
-    json_body=$(jq -n --arg c "$content" --arg t "$type" '{content: $c, type: $t}')
-  elif [[ "$type" == "raw" ]]; then
-    [[ -z "$file" ]] && { echo "Error: --file is required for raw type"; usage; }
-    local b64
-    b64=$(base64 < "$file")
-    local filename
-    filename=$(basename "$file")
-    content_type=$(file --mime-type -b "$file" 2>/dev/null || echo "application/octet-stream")
-    json_body=$(jq -n \
-      --arg c "$b64" \
-      --arg t "$type" \
-      --arg f "$filename" \
-      --arg ct "$content_type" \
-      '{content: $c, type: $t, filename: $f, contentType: $ct}')
+  [[ -n "$type" ]] || fail '--type is required'
+  case "$type" in markdown|markdoc|html|raw) ;; *) fail 'Type must be markdown, markdoc, html or raw' ;; esac
+  [[ $((has_content + has_file)) -eq 1 ]] || fail 'Provide exactly one of --file or --content'
+  [[ "$type" != raw || $has_file -eq 1 ]] || fail 'Raw content requires --file'
+  local dependency
+  for dependency in curl jq file base64; do
+    command -v "$dependency" >/dev/null 2>&1 || fail "Required command not found: $dependency"
+  done
+  # No credentials, query strings or fragments in the service address.
+  jq -en --arg url "$BASE_URL" '$url | test("^https?://([A-Za-z0-9.-]+|\\[[0-9A-Fa-f:]+\\])(:[0-9]+)?(/[A-Za-z0-9._~/-]+)?$")' >/dev/null \
+    || fail 'ARTIFACTS_URL must be an http or https service address'
+  TEMP_DIR=$(mktemp -d) || fail 'Could not create temporary files'
+  if [[ $has_file -eq 1 ]]; then
+    [[ -f "$input_file" && -r "$input_file" ]] || fail 'File is not a readable regular file'
+    cp -- "$input_file" "$TEMP_DIR/input" || fail 'Could not read file'
   else
-    echo "Error: type must be 'markdown' or 'raw'"
-    usage
+    printf '%s' "$content" > "$TEMP_DIR/input"
   fi
-
-  local response
-  response=$(curl -s -X POST "${BASE_URL}/api/artifacts" \
-    -H "Content-Type: application/json" \
-    -d "$json_body")
-
-  local url
-  url=$(echo "$response" | jq -r '.url // empty')
-  if [[ -n "$url" ]]; then
-    echo "$url"
+  local size content_type filename status url
+  size=$(wc -c < "$TEMP_DIR/input")
+  [[ $size -gt 0 ]] || fail 'Content must not be empty'
+  [[ $size -le 10485760 ]] || fail 'Content exceeds the 10 MiB limit'
+  if [[ "$type" == raw ]]; then
+    filename=$(basename -- "$input_file")
+    content_type=$(file --mime-type -b -- "$TEMP_DIR/input") || fail 'Could not determine file type'
+    base64 < "$TEMP_DIR/input" > "$TEMP_DIR/encoded" || fail 'Could not encode file'
+    jq -n --rawfile content "$TEMP_DIR/encoded" --arg filename "$filename" --arg mime "$content_type" \
+      '{type: "raw", content: ($content | gsub("[\r\n]"; "")), filename: $filename, contentType: $mime}' > "$TEMP_DIR/request" \
+      || fail 'Could not prepare request'
   else
-    echo "Error: $(echo "$response" | jq -r '.error // "Unknown error"')" >&2
-    exit 1
+    jq -n --rawfile content "$TEMP_DIR/input" --arg type "$type" \
+      '{type: $type, content: $content} + (if $type == "html" then {contentType: "text/html"} else {} end)' > "$TEMP_DIR/request" \
+      || fail 'Could not prepare request'
+    jq -j '.content' "$TEMP_DIR/request" | cmp -s "$TEMP_DIR/input" - \
+      || fail 'Text files must contain valid UTF-8'
   fi
+  # Never retry a POST: the server may have saved it even if the reply is lost.
+  if ! status=$(curl --silent --show-error --connect-timeout 10 --max-time 45 \
+    --request POST "${BASE_URL}/api/artifacts" --header 'Content-Type: application/json' \
+    --data-binary "@$TEMP_DIR/request" --output "$TEMP_DIR/response" --write-out '%{http_code}' 2> "$TEMP_DIR/curl-error"); then
+    fail 'Request failed. The artifact may have been created. Check before trying again.'
+  fi
+  [[ "$status" == 2[0-9][0-9] ]] || fail "Server returned HTTP $status. Artifact creation was not confirmed."
+  url=$(jq -esr --arg base "$BASE_URL" '
+    select(length == 1) | .[0].url | select(type == "string") |
+    select(startswith($base + "/")) |
+    select(test("^https?://[^[:space:]\\\\?#]+/[^[:space:]\\\\]+$"))
+  ' "$TEMP_DIR/response" 2>/dev/null) || fail 'Server returned an invalid response or an unexpected URL. Artifact creation was not confirmed.'
+  [[ -n "$url" ]] || fail 'Server did not return an artifact URL'
+  printf '%s\n' "$url"
 }
 
-[[ $# -lt 1 ]] && usage
-
+[[ $# -ge 1 ]] || usage
 case "$1" in
   create) shift; cmd_create "$@" ;;
-  *) echo "Unknown command: $1"; usage ;;
+  *) usage ;;
 esac
