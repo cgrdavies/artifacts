@@ -13,6 +13,19 @@ Use Artifacts for requested write-ups unless the user names another destination.
 
 Lead with the answer. Use short paragraphs and useful headings. Explain an unavoidable technical term once. Keep exact code, commands, paths, and names when they matter. Separate what was checked from what is proposed or still unknown. Don't pad the document or add decorative summaries.
 
+## Maintain one current explanation
+
+Before writing, find the existing document, its source files, and any publication receipt. **Update the maintained document instead of adding another report about the same subject.** Create a new page only for a distinct reader need.
+
+- Pick one authoritative source for each topic. Link to it instead of repeating its facts across status reports, handoffs, and TODO lists.
+- When implementation changes, replace outdated claims and instructions in that source. Don't make readers reconcile historical warnings with later corrections. A still-unimplemented proposal remains clearly labeled as proposed.
+- Within the requested scope, fold useful constraints from superseded prose into the maintained source, fix inbound links, and remove the redundant document. Keep raw test evidence and necessary decision rationale; don't rewrite failures or imply old tests verified new code. Don't delete unrelated material.
+- Treat hosted pages as reading copies of maintained sources. Record their source mapping with the local manifest and regenerate them when those sources change; don't hand-maintain two versions.
+- Reuse an existing collection and stable page IDs through the checked update command. Preserve its private receipt. If stable replacement is unavailable, explain the limitation rather than silently leaving several competing “current” links.
+- Before finishing, check contradictions, broken links, duplicate guidance, and stale status claims. Update local and hosted copies together, or clearly name the unsynchronized copy. A new date, disclaimer, or prettier layout does not make old information current.
+
+Keep the smallest useful set of pages. Do not add a summary, retrospective, changelog, or new index merely because work was completed. Progress belongs in the existing task list; durable guidance belongs in its existing home.
+
 ## Pick the smallest useful view
 
 Adapted from the local HumanLayer `show-me` skill; the original skill is unchanged.

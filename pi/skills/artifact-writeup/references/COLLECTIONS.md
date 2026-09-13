@@ -2,6 +2,8 @@
 
 Use a collection when a longer write-up has distinct parts worth linking to separately. Keep short write-ups on one page. Collections are a flat, ordered list—not folders or a file browser.
 
+Before creating a collection, look for an existing maintained source and receipt. Update that collection when it serves the same reader need. Collections are not a reason to accumulate overlapping reports.
+
 ## Keep the sources together
 
 Make a folder under `~/Documents/artifacts/` with the page files and a manifest:
@@ -24,6 +26,8 @@ my-guide/
   ]
 }
 ```
+
+If these pages mirror repository documentation, record each page’s canonical source paths in an optional local `sources` array in the manifest. That mapping is for your maintenance script; the publisher does not regenerate or validate those sources automatically. Regenerate and compare the reading copy before publishing. Keep one authored source, not independently edited local and hosted versions.
 
 The array sets reading order. Each page needs a title and a UTF-8 source file. Types are `markdown`, `markdoc`, or `html`. Keep file paths inside the manifest folder. A collection holds 1–50 pages and at most 10 MiB of source text in total; heavily escaped JSON can hit the separate 15 MiB request limit sooner.
 
@@ -58,6 +62,8 @@ node <skill-directory>/scripts/publish-collection.mjs ~/Documents/artifacts/my-g
 ```
 
 Use the collection ID from the receipt or main link. Keep each page's **key** fixed while changing its title, source filename, content, or position. The helper uses the key to retain its page ID. Advanced callers can supply an existing page `id` explicitly when changing its key.
+
+Replace superseded claims with current facts and current limits, rather than appending a correction below an obsolete explanation. Preserve evidence and useful decision rationale, not duplicate status narratives. Fix incoming links before retiring a page; do not remove a still-useful shared page merely to reduce the count.
 
 An update replaces the whole list. Omitted pages are deleted, and their old links stop working. New keys create new pages unless an existing ID is supplied. Do not update the same collection concurrently from separate writers; updates replace the previous version, rather than merging it.
 

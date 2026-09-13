@@ -8,6 +8,10 @@ For all prose: **don't use jargon; speak coherently; write simply and concisely,
 
 Keep the original HumanLayer show-me skill unchanged. Choose the smallest useful view: prose, pseudocode, a tree, a diff, a Mermaid diagram, then focused HTML only when needed. Prefer Markdown and shared layout blocks to hand-written page shells.
 
+## Keep documentation current
+
+Update the existing authoritative document before creating a new one. Consolidate overlapping guidance and remove superseded prose within the requested scope after preserving useful constraints and fixing links. Keep raw test evidence, including failures, separate from current instructions. Hosted collections are reading copies: keep a local source mapping, regenerate them, and update the same collection rather than leaving competing versions. Do not maintain parallel status reports or repeat a backlog across several files.
+
 ## Publish
 
 1. Save the source under `~/Documents/artifacts/` with a descriptive name.
