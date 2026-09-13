@@ -98,6 +98,89 @@ try{
  const blockedPage=await unavailable.newPage();await blockedPage.goto(collection.url);assert.equal(await blockedPage.locator('html').getAttribute('data-theme'),'dark');await blockedPage.getByLabel('Color theme').selectOption('light');assert.equal(await blockedPage.locator('html').getAttribute('data-theme'),'light');await unavailable.close();
  const bootContext=await browser.newContext({colorScheme:'light'});await bootContext.addInitScript(()=>localStorage.setItem('artifacts-theme','dark'));const bootPage=await bootContext.newPage();await bootPage.route('**/assets/document.js',route=>route.abort());await bootPage.goto(collection.url);assert.equal(await bootPage.locator('html').getAttribute('data-theme'),'dark');assert.equal(await bootPage.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(21, 25, 31)');await bootContext.close();
  report.checks.push('collection sidebar/mobile contents/prev-next/relative links/anchors; saved theme survives navigation/reload/tabs; system changes, blocked storage, and saved colors before the main script; diagrams redraw and the HTML frame receives the chosen color-scheme style');
+ // Exercise context controls with a deterministic clipboard, independent of host permissions.
+ await page.addInitScript(()=>{
+  window.__copiedMarkdown=null;window.__clipboardFails=false;
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{async writeText(text){
+   if(window.__clipboardFails)throw new DOMException('Clipboard denied','NotAllowedError');
+   window.__copiedMarkdown=text;
+  }}});
+ });
+ async function checkCopy(url,expected,{failure=false,endpoint}={}){
+  await page.goto(url);
+  const button=page.locator('.context-actions').getByRole('button',{name:'Copy Markdown',exact:true});
+  assert.ok(await button.isVisible(),'copy control is visible');
+  if(endpoint)assert.equal(await button.getAttribute('data-copy-markdown'),endpoint);
+  await page.evaluate(fails=>{window.__clipboardFails=fails;window.__copiedMarkdown=null;},failure);
+  await button.click();
+  if(failure){
+   const fallback=page.locator('textarea[data-markdown-fallback]');
+   await fallback.waitFor({state:'visible'});
+   assert.equal(await fallback.inputValue(),expected,'fallback preserves exact Markdown');
+   assert.equal(await fallback.evaluate(e=>e.readOnly),true);
+   assert.equal(await page.evaluate(()=>window.__copiedMarkdown),null);
+  }else{
+   await page.waitForFunction(()=>window.__copiedMarkdown!==null);
+   assert.equal(await page.evaluate(()=>window.__copiedMarkdown),expected,'clipboard preserves exact Markdown');
+   assert.equal(await page.locator('textarea[data-markdown-fallback]:visible').count(),0);
+  }
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('[role="status"]')).some(e=>e.textContent.trim()));
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'context controls do not cause mobile overflow');
+ }
+ async function checkDownloads(url){
+  await page.goto(url);
+  const bodies=[];
+  for(const [name,contentType] of [['Download collection Markdown','text/markdown'],['Download collection text','text/plain']]){
+   const link=page.locator('.context-actions').getByRole('link',{name,exact:true});
+   assert.ok(await link.isVisible(),name+' is visible');
+   const href=await link.getAttribute('href');assert.ok(href);
+   const response=await page.request.get(new URL(href,page.url()).href);
+   assert.equal(response.status(),200);
+   assert.ok(response.headers()['content-type'].startsWith(contentType));
+   assert.match(response.headers()['content-disposition'],/attachment/);
+   bodies.push(await response.text());
+  }
+  assert.equal(bodies[0],bodies[1],'Markdown and text downloads contain the same complete collection');
+  let previous=-1;
+  for(const source of collectionPayload.pages){
+   const position=bodies[0].indexOf(source.content);
+   assert.ok(position>previous,'download contains each original page in order');previous=position;
+  }
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'download controls fit the viewport');
+ }
+ for(const viewport of [{width:1200,height:900},{width:390,height:844}]){
+  await page.setViewportSize(viewport);
+  await checkDownloads(collection.url);
+  for(let i=0;i<collection.pages.length;i++){
+   const source=collectionPayload.pages[i];
+   const expected=source.type==='html'?'```html\n'+source.content+(source.content.endsWith('\n')?'':'\n')+'```\n':source.content;
+   await checkDownloads(collection.pages[i].url);
+   await checkCopy(collection.pages[i].url,expected,{endpoint:new URL(collection.pages[i].url).pathname+'/markdown'});
+  }
+  await checkCopy(doc,fs.readFileSync('examples/readable-write-ups.md','utf8'));
+  const htmlSource=fs.readFileSync('examples/focused-visual.html','utf8');
+  await checkCopy(visual,'```html\n'+htmlSource+(htmlSource.endsWith('\n')?'':'\n')+'```\n');
+  await checkCopy(collection.pages[0].url,collectionPayload.pages[0].content,{failure:true});
+  await checkCopy(doc,fs.readFileSync('examples/readable-write-ups.md','utf8'),{failure:true});
+  await page.screenshot({path:path.join(out,`markdown-fallback-${viewport.width}.png`),fullPage:true});
+ }
+ const realClipboardPage=await context.newPage();
+ await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:base});
+ await realClipboardPage.goto(collection.pages[0].url);
+ await realClipboardPage.getByRole('button',{name:'Copy Markdown',exact:true}).click();
+ await realClipboardPage.getByRole('status').filter({hasText:'Markdown copied.'}).waitFor();
+ assert.equal(await realClipboardPage.evaluate(()=>navigator.clipboard.readText()),collectionPayload.pages[0].content);
+ const downloadEvent=realClipboardPage.waitForEvent('download');
+ await realClipboardPage.getByRole('link',{name:'Download collection Markdown',exact:true}).click();
+ const download=await downloadEvent;assert.match(download.suggestedFilename(),/\.md$/);
+ assert.ok(fs.readFileSync(await download.path(),'utf8').includes(collectionPayload.pages[0].content));
+ await realClipboardPage.route('**/markdown',route=>route.fulfill({status:404,body:'Not found'}));
+ await realClipboardPage.getByRole('button',{name:'Copy Markdown',exact:true}).click();
+ await realClipboardPage.getByRole('status').filter({hasText:'Could not load Markdown'}).waitFor();
+ assert.equal(await realClipboardPage.getByRole('button',{name:'Copy Markdown',exact:true}).isEnabled(),true);
+ await realClipboardPage.close();
+ report.checks.push('real browser clipboard and file download work; failed source fetch is announced and can be retried');
+ report.checks.push('desktop/mobile collection home and all page download links return complete ordered Markdown/text; collection and standalone copy preserve exact Markdown; denied clipboard exposes readonly source and announces status without overflow');
  report.result='PASS';
 }catch(e){report.result='FAIL';report.error=e.stack;}
 finally{await browser?.close();await new Promise(r=>server.close(r));db.close();fs.rmSync(dir,{recursive:true,force:true});fs.writeFileSync(path.join(out,'browser-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));process.exitCode=report.result==='PASS'?0:1;}

@@ -3,6 +3,7 @@ import { findCollection, findPage, getPages } from './collections';
 import { renderDocument } from './render';
 import { renderMarkdownPage } from './views/markdown';
 import { UPLOAD_CSP } from './routes';
+import { collectionMarkdown, pageMarkdown } from './export';
 
 const escape = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 export const collectionViews = Router();
@@ -13,6 +14,24 @@ function navigation(id: string, currentUrl?: string) {
   return { title:collection.title, url, expiresAt:collection.expires_at, currentUrl,
     pages:getPages(id).map(p=>({title:p.title,url:`${url}/p/${p.id}`})) };
 }
+collectionViews.get(['/c/:collectionId/export.md', '/c/:collectionId/export.txt'], (req,res)=>{
+  const id = req.params.collectionId;
+  const collection = typeof id === 'string' ? findCollection(id) : null;
+  if (!collection) return res.status(404).send('Not found');
+  const extension = req.path.endsWith('.txt') ? 'txt' : 'md';
+  res.set('Content-Security-Policy', UPLOAD_CSP);
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.attachment(`collection-${collection.id}.${extension}`);
+  res.type(extension === 'md' ? 'text/markdown; charset=utf-8' : 'text/plain; charset=utf-8');
+  return res.send(Buffer.from(collectionMarkdown(collection, getPages(collection.id)), 'utf8'));
+});
+collectionViews.get('/c/:collectionId/p/:pageId/markdown', (req,res)=>{
+  const page = findPage(req.params.collectionId, req.params.pageId);
+  if (!page) return res.status(404).send('Not found');
+  res.set('Content-Security-Policy', UPLOAD_CSP);
+  res.set('X-Content-Type-Options', 'nosniff');
+  return res.type('text/plain; charset=utf-8').send(Buffer.from(pageMarkdown(page), 'utf8'));
+});
 collectionViews.get('/c/:collectionId', (req,res)=>{
   const nav = navigation(req.params.collectionId);
   if (!nav) return res.status(404).send('Not found');

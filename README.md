@@ -61,6 +61,12 @@ The local receipt contains a private edit key. Keep it with the sources, and nev
 - Off-site document images and other remote page assets are blocked. Upload images here first. Ordinary external text links still work.
 - Keep credentials and personal data out. Keep source files locally: artifacts are removed after about 30 days.
 
+## Give a coding agent the context
+
+Open a collection and choose **Download collection Markdown** or **Download collection text**. Both save one UTF-8 file containing all pages in reading order, with the collection title, page titles, and page keys. The `.txt` version keeps the same Markdown source rather than stripping code, links, diagrams, or Markdoc blocks. HTML pages are included as fenced HTML source, not executed or converted from their visual layout. Downloads never include the collection's edit key.
+
+Every document page, including standalone Markdown and HTML pages, has **Copy Markdown**. It copies saved Markdown/Markdoc exactly; HTML is wrapped in a code fence. If clipboard access is blocked, a selected text box lets you copy manually. **View Markdown** also works without JavaScript. Review the content before giving it to another service; the existing unlisted-link sharing and expiry rules still apply.
+
 ## API
 
 | Request | Purpose |
@@ -70,6 +76,7 @@ The local receipt contains a private edit key. Keep it with the sources, and nev
 | `GET /:id` | Read the page or file |
 | `GET /:id/content` | Read its original content |
 | `GET /:id/download` | Download its source |
+| `GET /:id/markdown` | Copyable Markdown source (HTML/SVG pages use a code fence) |
 | `DELETE /api/artifacts/:id` | Remove it |
 | `POST /api/collections` | Create `{title, pages: [{key, title, type, content}]}`; returns the edit token once |
 | `GET /api/collections/:id` | Public metadata and page sources |
@@ -77,6 +84,9 @@ The local receipt contains a private edit key. Keep it with the sources, and nev
 | `DELETE /api/collections/:id` | Remove the collection and its pages |
 | `GET /c/:id` | Collection contents |
 | `GET /c/:id/p/:pageId` | Read a page; append `/content` or `/download` for its source |
+| `GET /c/:id/export.md` | Download all pages as Markdown |
+| `GET /c/:id/export.txt` | Download the same source context as plain text |
+| `GET /c/:id/p/:pageId/markdown` | Copyable Markdown source for one page |
 
 Types are `markdown`, `markdoc`, `html` and `raw`. Raw content is base64. The limit is 10 MiB of decoded content; the JSON body limit is 15 MiB to fit a full-size encoded file. Single artifacts keep their existing table. Collections add two tables automatically without changing older artifacts. Older Markdown that cannot be rendered is still readable as escaped source.
 

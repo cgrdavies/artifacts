@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { insertArtifact, getArtifact, deleteArtifact, Artifact } from "./db";
 import { renderMarkdownPage } from "./views/markdown";
 import { renderDocument } from "./render";
+import { pageMarkdown } from "./export";
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const router = Router();
@@ -23,6 +24,7 @@ router.get("/api/capabilities", (_req, res) => res.json({
   htmlIsolation: "sandbox", retentionDays: 30,
   collections: { version: 1, maxPages: 50, stablePageLinks: true, sharedExpiry: true, editTokenRequired: true },
   theme: { system: true, savedPreference: true },
+  contextExport: { collectionFormats: ["markdown", "text"], pageMarkdown: true },
 }));
 
 router.post("/api/artifacts", (req: Request, res: Response) => {
@@ -91,6 +93,17 @@ router.get("/:id/content", (req: Request, res: Response) => {
   return res.send(Buffer.from(artifact.content, "base64"));
 });
 
+router.get("/:id/markdown", (req: Request, res: Response) => {
+  const artifact = find(req, res);
+  if (!artifact) return;
+  if (artifact.type !== "markdown" && !activeFile(artifact)) return res.status(404).type("text/plain").send("No Markdown representation for this file");
+  res.set("Content-Security-Policy", UPLOAD_CSP);
+  return res.type("text/plain; charset=utf-8").send(pageMarkdown({
+    type: artifact.type === "markdown" ? "markdown" : "html",
+    content: artifact.type === "markdown" ? artifact.content : Buffer.from(artifact.content, "base64").toString("utf8"),
+  }));
+});
+
 router.get("/:id/download", (req: Request, res: Response) => {
   const artifact = find(req, res);
   if (!artifact) return;
@@ -105,16 +118,16 @@ router.get("/:id", (req: Request, res: Response) => {
   if (artifact.type === "markdown") {
     try {
       const doc = renderDocument(artifact.content);
-      return res.type("html").send(renderMarkdownPage(doc.title, doc.html));
+      return res.type("html").send(renderMarkdownPage(doc.title, doc.html, undefined, `/${artifact.id}/markdown`));
     } catch {
       // Preserve older documents that don't fit the new markup rules, without
       // falling back to unsafe HTML rendering.
-      return res.type("html").send(renderMarkdownPage("Saved document", `<h1>Saved document</h1><p>Some formatting could not be shown. Here is the saved text.</p><pre>${escape(artifact.content)}</pre>`));
+      return res.type("html").send(renderMarkdownPage("Saved document", `<h1>Saved document</h1><p>Some formatting could not be shown. Here is the saved text.</p><pre>${escape(artifact.content)}</pre>`, undefined, `/${artifact.id}/markdown`));
     }
   }
   if (activeFile(artifact)) {
     const title = artifact.filename || "Interactive page";
-    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe><p><a href="/${artifact.id}/download">Download</a></p>`));
+    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe><p><a href="/${artifact.id}/download">Download</a></p>`, undefined, `/${artifact.id}/markdown`));
   }
   res.set("Content-Security-Policy", UPLOAD_CSP);
   res.type(artifact.content_type);

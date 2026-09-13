@@ -5,7 +5,7 @@ import { collectionsRouter } from "./collections";
 import { collectionViews } from "./collection-views";
 
 export const ROBOTS = "noindex, nofollow, nosnippet, noimageindex";
-export const DOCUMENT_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+export const DOCUMENT_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
 export function createApp() {
   const app = express();

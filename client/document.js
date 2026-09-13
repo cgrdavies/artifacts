@@ -33,6 +33,38 @@ window.addEventListener('storage', event => {
   applyTheme();
 });
 
+// Copy saved source, not rendered DOM: diagrams and code retain their original text.
+for (const button of document.querySelectorAll('[data-copy-markdown]')) {
+  button.disabled = false;
+  button.addEventListener('click', async () => {
+    const actions = button.closest('.context-actions');
+    const status = actions.querySelector('[data-copy-status]');
+    const fallback = actions.querySelector('[data-markdown-fallback]');
+    button.disabled = true;
+    status.textContent = 'Loading Markdown…';
+    fallback.parentElement.hidden = true;
+    try {
+      const response = await fetch(button.dataset.copyMarkdown, { credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Source unavailable');
+      const markdown = await response.text();
+      try {
+        await navigator.clipboard.writeText(markdown);
+        status.textContent = 'Markdown copied.';
+      } catch {
+        fallback.value = markdown;
+        fallback.parentElement.hidden = false;
+        fallback.focus();
+        fallback.select();
+        status.textContent = 'Clipboard unavailable. Copy the selected Markdown below.';
+      }
+    } catch {
+      status.textContent = 'Could not load Markdown. Try again or use View Markdown.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 // Ordinary documents don't download the diagram renderer.
 const diagrams = [...document.querySelectorAll('pre.mermaid')].map(node => ({
   node, source: node.textContent, figure: null, observer: null, note: null,
