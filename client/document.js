@@ -28,6 +28,8 @@ themeControl?.addEventListener('change', () => {
   } catch { /* Keep the in-memory preference. */ }
   applyTheme();
 });
+// Don't accept a theme choice before its change handler is attached.
+if (themeControl) themeControl.disabled = false;
 systemTheme.addEventListener('change', () => { if (preference === 'system') applyTheme(); });
 window.addEventListener('storage', event => {
   if (event.key !== themeKey && event.key !== null) return;
