@@ -1,3 +1,6 @@
+import './annotations.js';
+import './annotations.css';
+
 const themeKey = 'artifacts-theme';
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const themeControl = document.querySelector('#theme-preference');

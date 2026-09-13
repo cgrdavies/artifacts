@@ -75,4 +75,23 @@ export const deleteOldCollections: Statement = db.prepare(
   `DELETE FROM collections WHERE julianday(expires_at) <= julianday('now')`
 );
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS annotations (
+    id TEXT PRIMARY KEY,
+    artifact_id TEXT REFERENCES artifacts(id) ON DELETE CASCADE,
+    page_id TEXT REFERENCES collection_pages(id) ON DELETE CASCADE,
+    owner_token_hash TEXT NOT NULL,
+    note TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    suffix TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK ((artifact_id IS NOT NULL) != (page_id IS NOT NULL))
+  );
+  CREATE INDEX IF NOT EXISTS annotations_artifact ON annotations(artifact_id);
+  CREATE INDEX IF NOT EXISTS annotations_page ON annotations(page_id);
+`);
+
 export default db;

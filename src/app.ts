@@ -3,6 +3,7 @@ import path from "path";
 import routes from "./routes";
 import { collectionsRouter } from "./collections";
 import { collectionViews } from "./collection-views";
+import { annotationsRouter, AnnotationError } from "./annotations";
 
 export const ROBOTS = "noindex, nofollow, nosnippet, noimageindex";
 export const DOCUMENT_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
@@ -25,11 +26,13 @@ export function createApp() {
   app.use("/assets", express.static(path.join(__dirname, "..", "public", "assets"), { index: false, redirect: false, dotfiles: "deny" }));
   // A 10 MiB file needs roughly 13.4 MiB once encoded as JSON/base64.
   app.use(express.json({ limit: "15mb" }));
+  app.use(annotationsRouter);
   app.use(collectionsRouter);
   app.use(collectionViews);
   app.use(routes);
   app.use((_req, res) => res.status(404).type("text/plain").send("Not found"));
   const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+    if (error instanceof AnnotationError) return void res.status(error.status).json({ error: error.message });
     if (error.type === "entity.too.large") return void res.status(413).json({ error: "Upload body is too large." });
     if (error.type === "entity.parse.failed") return void res.status(400).json({ error: "Send a valid JSON object." });
     console.error("Artifact request failed.");

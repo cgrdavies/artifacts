@@ -45,7 +45,7 @@ try {
     if (!content.ok || !headersOkay(content) || !/sandbox\s+allow-scripts(?:;|$)/.test(csp) || /allow-same-origin/.test(csp)) fail('The link was created, but HTML isolation could not be verified.');
     await content.arrayBuffer();
   }
-  const download = await get(createdUrl + '/download');
+  const download = await get(createdUrl + '/download?source=1');
   if (!download.ok || !headersOkay(download)) fail('The link was created, but its saved source could not be checked.');
   const saved = Buffer.from(await download.arrayBuffer());
   if (!saved.equals(bytes)) fail('The saved source did not match the local file.');

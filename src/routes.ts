@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { insertArtifact, getArtifact, deleteArtifact, Artifact } from "./db";
 import { renderMarkdownPage } from "./views/markdown";
 import { renderDocument } from "./render";
-import { pageMarkdown } from "./export";
+import { pageMarkdown, withComments, commentsMarkdown } from "./export";
+import { getComments, getSourceHash } from "./annotations";
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const router = Router();
@@ -25,6 +26,7 @@ router.get("/api/capabilities", (_req, res) => res.json({
   collections: { version: 1, maxPages: 50, stablePageLinks: true, sharedExpiry: true, editTokenRequired: true },
   theme: { system: true, savedPreference: true },
   contextExport: { collectionFormats: ["markdown", "text"], pageMarkdown: true },
+  annotations: { version: 1, readAccess: "unlisted", author: "user", verifiedIdentity: false, ownerKeyRequired: true, formats: ["json", "markdown"], markdownSuffix: "/comments.md", includedInExports: true },
 }));
 
 router.post("/api/artifacts", (req: Request, res: Response) => {
@@ -80,6 +82,17 @@ function find(req: Request, res: Response): Artifact | undefined {
 }
 const activeFile = (a: Artifact) => /^(?:text\/html|application\/xhtml\+xml|image\/svg\+xml)(?:;|$)/i.test(a.content_type);
 
+function annotationOptions(artifact: Artifact) {
+  return { commentsUrl: `/api/artifacts/${artifact.id}/comments`, commentsMarkdownUrl: `/${artifact.id}/comments.md`,
+    sourceHash: getSourceHash(artifact.type === "markdown" ? artifact.content : Buffer.from(artifact.content, "base64").toString("utf8")),
+    highlightEnabled: artifact.type === "markdown" };
+}
+
+router.get("/:id/comments.md", (req: Request, res: Response) => {
+  res.set("Content-Security-Policy", UPLOAD_CSP);
+  return res.type("text/plain; charset=utf-8").send(commentsMarkdown(getComments({ artifactId: req.params.id as string }).comments));
+});
+
 router.get("/:id/content", (req: Request, res: Response) => {
   const artifact = find(req, res);
   if (!artifact) return;
@@ -98,16 +111,25 @@ router.get("/:id/markdown", (req: Request, res: Response) => {
   if (!artifact) return;
   if (artifact.type !== "markdown" && !activeFile(artifact)) return res.status(404).type("text/plain").send("No Markdown representation for this file");
   res.set("Content-Security-Policy", UPLOAD_CSP);
-  return res.type("text/plain; charset=utf-8").send(pageMarkdown({
+  const source = pageMarkdown({
     type: artifact.type === "markdown" ? "markdown" : "html",
     content: artifact.type === "markdown" ? artifact.content : Buffer.from(artifact.content, "base64").toString("utf8"),
-  }));
+  });
+  return res.type("text/plain; charset=utf-8").send(withComments(source,
+    req.query.source === "1" ? [] : getComments({ artifactId: artifact.id }).comments));
 });
 
 router.get("/:id/download", (req: Request, res: Response) => {
   const artifact = find(req, res);
   if (!artifact) return;
   res.set("Content-Security-Policy", UPLOAD_CSP);
+  if (req.query.source !== "1" && (artifact.type === "markdown" || activeFile(artifact))) {
+    const comments = getComments({ artifactId: artifact.id }).comments;
+    if (comments.length) {
+      const source = pageMarkdown({ type: artifact.type === "markdown" ? "markdown" : "html", content: artifact.type === "markdown" ? artifact.content : Buffer.from(artifact.content, "base64").toString("utf8") });
+      return res.attachment(`artifact-${artifact.id}-annotated.md`).type("text/markdown; charset=utf-8").send(withComments(source, comments));
+    }
+  }
   res.attachment(artifact.filename || (artifact.type === "markdown" ? "document.md" : "artifact.bin"));
   return res.send(artifact.type === "markdown" ? Buffer.from(artifact.content) : Buffer.from(artifact.content, "base64"));
 });
@@ -118,16 +140,16 @@ router.get("/:id", (req: Request, res: Response) => {
   if (artifact.type === "markdown") {
     try {
       const doc = renderDocument(artifact.content);
-      return res.type("html").send(renderMarkdownPage(doc.title, doc.html, undefined, `/${artifact.id}/markdown`));
+      return res.type("html").send(renderMarkdownPage(doc.title, doc.html, undefined, `/${artifact.id}/markdown`, annotationOptions(artifact)));
     } catch {
       // Preserve older documents that don't fit the new markup rules, without
       // falling back to unsafe HTML rendering.
-      return res.type("html").send(renderMarkdownPage("Saved document", `<h1>Saved document</h1><p>Some formatting could not be shown. Here is the saved text.</p><pre>${escape(artifact.content)}</pre>`, undefined, `/${artifact.id}/markdown`));
+      return res.type("html").send(renderMarkdownPage("Saved document", `<h1>Saved document</h1><p>Some formatting could not be shown. Here is the saved text.</p><pre>${escape(artifact.content)}</pre>`, undefined, `/${artifact.id}/markdown`, annotationOptions(artifact)));
     }
   }
   if (activeFile(artifact)) {
     const title = artifact.filename || "Interactive page";
-    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe>`, undefined, `/${artifact.id}/markdown`));
+    return res.type("html").send(renderMarkdownPage(title, `<h1>${escape(title)}</h1><iframe class="artifact-frame" title="${escape(title)}" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/${artifact.id}/content"></iframe>`, undefined, `/${artifact.id}/markdown`, annotationOptions(artifact)));
   }
   res.set("Content-Security-Policy", UPLOAD_CSP);
   res.type(artifact.content_type);

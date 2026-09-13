@@ -136,8 +136,21 @@ collectionsRouter.put("/api/collections/:id", (req, res, next) => {
       const owned = new Set(getPages(current.id).map(page => page.id));
       if (input.pages.some(page => page.id !== undefined && !owned.has(page.id))) throw new InputError("A supplied page ID does not belong to this collection.");
       db.prepare("UPDATE collections SET title = ? WHERE id = ?").run(input.title, current.id);
-      db.prepare("DELETE FROM collection_pages WHERE collection_id = ?").run(current.id);
-      writePages(current.id, input.pages);
+      // Move existing keys and positions out of the input namespace before swaps.
+      // Temporary keys contain ':' (not allowed in client keys).
+      const existing = getPages(current.id);
+      const offset = Math.max(0, ...existing.map(page => page.position)) + input.pages.length + 1;
+      const stage = db.prepare("UPDATE collection_pages SET key = ?, position = ? WHERE id = ?");
+      existing.forEach((page, index) => stage.run(`:staged:${page.id}`, offset + index, page.id));
+      const retained = new Set(input.pages.map(page => page.id));
+      for (const page of existing) {
+        if (!retained.has(page.id)) db.prepare("DELETE FROM collection_pages WHERE id = ?").run(page.id);
+      }
+      const update = db.prepare("UPDATE collection_pages SET key = ?, title = ?, type = ?, content = ?, position = ? WHERE id = ?");
+      input.pages.forEach((page, position) => {
+        if (page.id) update.run(page.key, page.title, page.type, page.content, position, page.id);
+        else insertPage.run(randomUUID(), current.id, page.key, page.title, page.type, page.content, position);
+      });
       return { ...current, title: input.title };
     })();
     res.json(response(collection));

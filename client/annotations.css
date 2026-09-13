@@ -1,0 +1,83 @@
+/* Scoped controls: uploaded document styles and HTML frames stay untouched. */
+.annotations {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.annotations h2 { margin-top: 0; }
+.annotations-help, .annotations-meta, .annotations-status {
+  color: var(--muted);
+  font-size: .9rem;
+}
+.annotations .annotations-warning { color: var(--warning); }
+.annotations form { display: grid; gap: .75rem; margin: 1rem 0; }
+.annotations label { font-weight: 600; }
+.annotations textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+  padding: .75rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.annotations button {
+  width: fit-content;
+  max-width: 100%;
+  margin: .2rem .5rem .2rem 0;
+  padding: .55rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.annotations .annotations-selection-action {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 20;
+  max-width: calc(100vw - 2rem);
+  margin: 0;
+  background: var(--paper);
+  border-color: var(--accent);
+  box-shadow: 0 3px 16px #0003;
+}
+.annotations .annotations-refresh { background: transparent; border: 0; padding: .25rem 0; color: var(--accent); font-size: .85rem; text-decoration: underline; }
+.annotations button:disabled { opacity: .55; cursor: not-allowed; }
+.annotations :is(button, textarea, a):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.annotations a { color: var(--accent); }
+.annotations [hidden] { display: none !important; }
+.annotations-list { list-style: none; padding: 0; }
+.annotations-list > li { padding: 1rem 0; border-top: 1px solid var(--line); }
+.annotations blockquote {
+  margin: .75rem 0;
+  padding: .4rem .8rem;
+  border-left: 3px solid var(--note);
+  color: var(--muted);
+  white-space: pre-wrap;
+  max-height: 18rem;
+  overflow: auto;
+}
+.annotations-note { white-space: pre-wrap; }
+.annotations-status:empty { display: none; }
+::highlight(artifact-comments) { background-color: #f2c94c66; }
+:root[data-theme="dark"] ::highlight(artifact-comments) { background-color: #e9be4655; }
+@media (max-width: 600px) {
+  .annotations { margin-top: 2rem; }
+  .annotations button { min-height: 44px; }
+}
+@media print {
+  .annotations form, .annotations button { display: none; }
+}

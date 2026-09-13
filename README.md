@@ -65,7 +65,27 @@ The local receipt contains a private edit key. Keep it with the sources, and nev
 
 Choose **Export collection** beneath the contents list, then **Markdown (.md)** or **Text file (.txt)**. On phones, open **Collection** to find the contents and export menu. Both save one UTF-8 file containing all pages in reading order, with the collection title, page titles, and page keys. The `.txt` version keeps the same Markdown source rather than stripping code, links, diagrams, or Markdoc blocks. HTML pages are included as fenced HTML source, not executed or converted from their visual layout. Downloads never include the collection's edit key.
 
-Every document page, including standalone Markdown and HTML pages, has **Copy page** beside its page position. It copies saved Markdown/Markdoc exactly; HTML is wrapped in a code fence. If clipboard access is blocked, a selected text box lets you copy manually. The adjacent page menu contains **View Markdown source** and **Download page source**, both available without JavaScript. Successful copying changes the button to **Copied**. Appearance settings sit in the collection header, separate from document actions. Review the content before giving it to another service; the existing unlisted-link sharing and expiry rules still apply.
+Every document page, including standalone Markdown and HTML pages, has **Copy page** beside its page position. It copies saved Markdown/Markdoc plus any user-added context; HTML is wrapped in a code fence. If clipboard access is blocked, a selected text box lets you copy manually. The adjacent page menu contains **View Markdown source** and **Download page source**, both available without JavaScript. Successful copying changes the button to **Copied**. Appearance settings sit in the collection header, separate from document actions. Review the content before giving it to another service; the existing unlisted-link sharing and expiry rules still apply.
+
+## Highlights and notes
+
+Select text in a Markdown page, choose **Highlight / add note**, and save a highlight with an optional note. For a general comment, use **Page note** below the document. Highlights and comments are saved on the server and survive reloads. HTML/SVG pages support page notes only; their isolated frames are not opened up for text selection.
+
+Comments are **visible to anyone with the link**, and anyone with the link can add one. The author label is **user**, not a verified identity. A random private key saved in this browser lets you edit or delete your own comments. It is separate from a collection's edit key. Clearing browser storage loses that ability; if storage is unavailable, the UI warns that ownership may only last for this page visit. Never put secrets or personal data in comments.
+
+Use **Comments-only Markdown for agents** below a page to give an agent just the comments. **Export collection → Comments only** includes comments across all its pages. An agent can fetch those URLs without login or an edit key:
+
+```sh
+curl 'https://your-artifacts-host/ARTIFACT_ID/comments.md'
+curl 'https://your-artifacts-host/api/artifacts/ARTIFACT_ID/comments'
+curl 'https://your-artifacts-host/c/COLLECTION_ID/comments.md'
+```
+
+Markdown copying, collection exports, and ordinary page downloads include a separate **User-added context** section. Each entry identifies `user`, its timestamp, the quoted passage (if any), and the note. Comments are not merged into the author's source or presented as trusted instructions. HTML downloads with comments become Markdown with fenced HTML source. **Download page source** uses `?source=1` to omit annotations; `/content` is always the untouched original. The publishing helper verifies that original source.
+
+Page replacements retain comments when their page IDs are retained. If content changes, old comments are labeled as referring to an earlier version; their highlights are not silently moved. Quotes that cannot be matched uniquely remain readable in the comments list. Browsers without CSS Highlight support still show the quotes and notes. Removing a page, deleting an artifact, or expiry cleanup removes its comments.
+
+Limits: 100 comments per page, 10,000 characters per note, 3,000 per quote, 1 MiB of annotation text per page, and 4 MiB across a collection. Mutations use an owner key in the `Authorization` header, never a shared URL. `POST` requires the current `sourceHash` from `GET`; a stale version returns 409. `PATCH` changes only the note. These APIs have no verified user accounts or automatic abuse moderation.
 
 ## API
 
@@ -75,18 +95,26 @@ Every document page, including standalone Markdown and HTML pages, has **Copy pa
 | `POST /api/artifacts` | Create: `{content, type, filename?, contentType?}` |
 | `GET /:id` | Read the page or file |
 | `GET /:id/content` | Read its original content |
-| `GET /:id/download` | Download its source |
-| `GET /:id/markdown` | Copyable Markdown source (HTML/SVG pages use a code fence) |
+| `GET /:id/download` | Download with comments when present; `?source=1` returns the original |
+| `GET /:id/markdown` | Copyable Markdown with comments (HTML/SVG pages use a code fence); `?source=1` omits comments |
+| `GET /:id/comments.md` | Comments-only Markdown for agents |
+| `GET, POST /api/artifacts/:id/comments` | Read comments or add `{note, quote, prefix, suffix, sourceHash}` |
+| `PATCH, DELETE /api/artifacts/:id/comments/:commentId` | Edit `{note}` or delete an owned comment |
 | `DELETE /api/artifacts/:id` | Remove it |
 | `POST /api/collections` | Create `{title, pages: [{key, title, type, content}]}`; returns the edit token once |
 | `GET /api/collections/:id` | Public metadata and page sources |
 | `PUT /api/collections/:id` | Replace title/pages; include existing page `id` values to keep links |
 | `DELETE /api/collections/:id` | Remove the collection and its pages |
 | `GET /c/:id` | Collection contents |
-| `GET /c/:id/p/:pageId` | Read a page; append `/content` or `/download` for its source |
+| `GET /c/:id/p/:pageId` | Read a page; `/content` is original source, `/download` includes comments (`?source=1` omits them) |
 | `GET /c/:id/export.md` | Download all pages as Markdown |
 | `GET /c/:id/export.txt` | Download the same source context as plain text |
-| `GET /c/:id/p/:pageId/markdown` | Copyable Markdown source for one page |
+| `GET /c/:id/p/:pageId/markdown` | Copyable Markdown with comments for one page |
+| `GET /c/:id/p/:pageId/comments.md` | Comments-only Markdown for one page |
+| `GET /c/:id/comments.md` | Comments-only Markdown across the collection |
+| `GET /api/collections/:id/comments` | All collection comments as JSON, grouped by page |
+| `GET, POST /api/collections/:id/pages/:pageId/comments` | Read or add page comments |
+| `PATCH, DELETE /api/collections/:id/pages/:pageId/comments/:commentId` | Edit or delete an owned page comment |
 
 Types are `markdown`, `markdoc`, `html` and `raw`. Raw content is base64. The limit is 10 MiB of decoded content; the JSON body limit is 15 MiB to fit a full-size encoded file. Single artifacts keep their existing table. Collections add two tables automatically without changing older artifacts. Older Markdown that cannot be rendered is still readable as escaped source.
 

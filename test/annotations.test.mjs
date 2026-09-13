@@ -1,0 +1,118 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import express from 'express';
+const directory = mkdtempSync(join(tmpdir(), 'annotations-'));
+process.env.DB_PATH = join(directory, 'test.db');
+process.env.ARTIFACTS_URL = 'https://example.test';
+const { annotationsRouter, getSourceHash, getComments } = await import('../dist/annotations.js');
+const { collectionsRouter } = await import('../dist/collections.js');
+const database = await import('../dist/db.js');
+const db = database.default.default;
+const app = express();
+app.use(express.json(), annotationsRouter, collectionsRouter);
+const server = app.listen(0, '127.0.0.1');
+await new Promise(resolve => server.once('listening', resolve));
+const base = `http://127.0.0.1:${server.address().port}`;
+const owner = 'a'.repeat(64), stranger = 'b'.repeat(64);
+async function request(method, path, body, key = owner, origin) {
+  const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}), ...(origin ? { Origin: origin } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: response.status, body: response.status === 204 ? null : await response.json() };
+}
+test('comments: ownership, validation, preservation, caps and expiry', async () => {
+  try {
+    db.prepare("INSERT INTO artifacts (id,type,content) VALUES ('a','markdown','hello'), ('other','markdown','hello')").run();
+    const path = '/api/artifacts/a/comments';
+    const sourceHash = getSourceHash('hello');
+    const input = { note: '<script>alert(1)</script>', quote: 'hello', prefix: '', suffix: '', sourceHash };
+    assert.deepEqual((await request('GET', path)).body, { comments: [], sourceHash });
+    for (const body of [{}, { note: 'x', sourceHash: 'invalid' }, { ...input, note: 1 }, { ...input, note: 'x'.repeat(10001) }, { ...input, quote: 'x'.repeat(3001) }, { ...input, prefix: 'x'.repeat(81) }, { ...input, suffix: 'x'.repeat(81) }, { ...input, note: ' ', quote: '' }]) assert.equal((await request('POST', path, body)).status, 400);
+    assert.equal((await request('POST', path, { ...input, sourceHash: '0'.repeat(64) })).status, 409);
+    for (const key of [null, 'invalid', 'A'.repeat(64)]) assert.equal((await request('POST', path, input, key)).status, 403);
+    assert.equal((await request('POST', path, input, owner, 'https://evil.test')).status, 403);
+    assert.equal((await request('POST', path, input, owner, 'null')).status, 403);
+    const created = await request('POST', path, input, owner, 'https://example.test');
+    assert.equal(created.status, 201);
+    const comment = created.body;
+    assert.equal(comment.note, input.note);
+    assert.equal(comment.author, 'user');
+    assert.equal(comment.canEdit, true);
+    assert.equal(comment.outdated, false);
+    assert.equal(new Date(comment.createdAt).toISOString(), comment.createdAt);
+    assert.equal(db.prepare('SELECT owner_token_hash FROM annotations WHERE id = ?').get(comment.id).owner_token_hash, getSourceHash(owner));
+    assert.equal(getComments({ artifactId: 'a' }).comments[0].canEdit, false);
+    assert.equal((await request('GET', path, undefined, stranger)).body.comments[0].canEdit, false);
+    assert.equal((await request('PATCH', `${path}/${comment.id}`, { note: 'bad' }, stranger)).status, 403);
+    assert.equal((await request('DELETE', `${path}/${comment.id}`, undefined, stranger)).status, 403);
+    assert.equal((await request('PATCH', `${path}/${comment.id}`, { sourceHash })).status, 400);
+    assert.equal((await request('PATCH', `${path}/${comment.id}`, { note: 'edited' })).body.note, 'edited');
+    assert.equal((await request('DELETE', `/api/artifacts/other/comments/${comment.id}`)).status, 404);
+    for (let i = 1; i < 100; i++) assert.equal((await request('POST', path, input)).status, 201);
+    assert.equal((await request('POST', path, input)).status, 409);
+    assert.equal((await request('DELETE', `${path}/${comment.id}`)).status, 204);
+    assert.equal((await request('POST', path, input)).status, 201);
+    const pages = ['one', 'two'].map(key => ({ key, title: key, type: 'markdown', content: 'hello' }));
+    const collection = (await request('POST', '/api/collections', { title: 'Guide', pages })).body;
+    const cp = `/api/collections/${collection.id}/pages/${collection.pages[0].id}/comments`;
+    const cc = (await request('POST', cp, input)).body;
+    const aggregate = await request('GET', `/api/collections/${collection.id}/comments`, undefined, null);
+    assert.equal(aggregate.status, 200);
+    assert.deepEqual(aggregate.body.pages.map(p => p.id), collection.pages.map(p => p.id));
+    assert.equal(aggregate.body.pages[0].comments[0].id, cc.id);
+    assert.equal(aggregate.body.pages[0].comments[0].canEdit, false);
+    assert.deepEqual(aggregate.body.pages[1].comments, []);
+    assert.equal((await request('GET', `/api/collections/${collection.id}/comments`)).body.pages[0].comments[0].canEdit, true);
+    assert.equal((await request('GET', '/api/collections/missing/comments')).status, 404);
+    const updated = await request('PUT', `/api/collections/${collection.id}`, { title: 'Changed', pages: [{ ...collection.pages[1], key: 'one' }, { ...collection.pages[0], key: 'two', content: 'changed' }] }, collection.editToken);
+    assert.equal(updated.status, 200);
+    const retained = (await request('GET', cp)).body.comments[0];
+    assert.equal(retained.id, cc.id);
+    assert.equal(retained.outdated, true);
+    assert.equal((await request('PATCH', `${cp}/${cc.id}`, { note: 'new note' })).body.sourceHash, sourceHash);
+    assert.equal((await request('POST', cp, input)).status, 409);
+    assert.equal((await request('GET', `/api/collections/missing/pages/${collection.pages[0].id}/comments`)).status, 404);
+    await request('PUT', `/api/collections/${collection.id}`, { title: 'Removed', pages: [collection.pages[1]] }, collection.editToken);
+    assert.equal(db.prepare('SELECT count(*) n FROM annotations WHERE id = ?').get(cc.id).n, 0);
+    db.prepare("INSERT INTO artifacts (id,type,content,content_type) VALUES ('html','raw',?,'text/html'), ('binary','raw','AA==','application/octet-stream')").run(Buffer.from('<p>é</p>').toString('base64'));
+    assert.equal((await request('GET', '/api/artifacts/html/comments')).body.sourceHash, getSourceHash('<p>é</p>'));
+    assert.equal((await request('GET', '/api/artifacts/binary/comments')).status, 415);
+    for (const [id, type, content] of [['svg', 'image/svg+xml', '<svg/>'], ['xhtml', 'application/xhtml+xml', '<html/>'], ['rawmd', 'text/markdown', '# Raw']]) {
+      db.prepare('INSERT INTO artifacts (id,type,content,content_type) VALUES (?,\'raw\',?,?)').run(id, Buffer.from(content).toString('base64'), type);
+      const result = await request('GET', `/api/artifacts/${id}/comments`);
+      assert.equal(result.status, id === 'rawmd' ? 415 : 200);
+      if (id !== 'rawmd') assert.equal(result.body.sourceHash, getSourceHash(content));
+    }
+    // Three-byte characters ensure limits count UTF-8 bytes rather than characters.
+    const large = '界'.repeat(10000);
+    const budgetPath = '/api/artifacts/other/comments';
+    for (let i = 0; i < 34; i++) assert.equal((await request('POST', budgetPath, { note: large, sourceHash })).status, 201);
+    const small = (await request('POST', budgetPath, { note: 'small', sourceHash })).body;
+    assert.equal((await request('POST', budgetPath, { note: large, sourceHash })).status, 413);
+    assert.equal((await request('PATCH', `${budgetPath}/${small.id}`, { note: large })).status, 413);
+    assert.equal((await request('GET', budgetPath)).body.comments.find(c => c.id === small.id).note, 'small');
+    assert.equal((await request('PATCH', `${budgetPath}/${small.id}`, { note: 'ok' })).status, 200);
+    const budgetCollection = (await request('POST', '/api/collections', { title: 'Budget', pages: Array.from({ length: 5 }, (_, i) => ({ key: `p${i}`, title: 'Page', type: 'markdown', content: 'hello' })) })).body;
+    const seed = db.prepare('INSERT INTO annotations (id,page_id,owner_token_hash,note,quote,prefix,suffix,source_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
+    budgetCollection.pages.forEach((page, p) => {
+      for (let i = 0; i < (p < 4 ? 34 : 3); i++) seed.run(`budget-${p}-${i}`, page.id, getSourceHash(owner), large, '', '', '', sourceHash, new Date().toISOString(), new Date().toISOString());
+    });
+    const collectionBudgetPath = `/api/collections/${budgetCollection.id}/pages/${budgetCollection.pages[4].id}/comments`;
+    assert.equal((await request('POST', collectionBudgetPath, { note: large, sourceHash })).status, 413);
+    const tiny = (await request('POST', collectionBudgetPath, { note: 'tiny', sourceHash })).body;
+    assert.equal((await request('PATCH', `${collectionBudgetPath}/${tiny.id}`, { note: large })).status, 413);
+    db.prepare("UPDATE artifacts SET created_at = datetime('now','-31 days') WHERE id = 'a'").run();
+    assert.equal((await request('GET', path)).status, 404);
+    assert.equal((await request('POST', path, input)).status, 404);
+    db.prepare("UPDATE collections SET expires_at = datetime('now','-1 second') WHERE id = ?").run(collection.id);
+    assert.equal((await request('GET', `/api/collections/${collection.id}/pages/${collection.pages[1].id}/comments`)).status, 404);
+    assert.equal((await request('GET', `/api/collections/${collection.id}/comments`)).status, 404);
+    database.deleteOldArtifacts.run();
+    assert.equal(db.prepare("SELECT count(*) n FROM annotations WHERE artifact_id = 'a'").get().n, 0);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
