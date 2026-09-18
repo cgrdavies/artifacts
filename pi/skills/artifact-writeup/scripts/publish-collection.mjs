@@ -55,7 +55,7 @@ try {
  let response;
  try { response=await fetch(baseUrl+'/api/collections'+(updateId?'/'+updateId:''),{method:updateId?'PUT':'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{'content-type':'application/json',...(editToken?{authorization:'Bearer '+editToken}:{})},body:JSON.stringify(payload)}); }
  catch { fail('The request failed. Its result may be unknown; check the collection before trying again.'); }
- if(!response.ok){const detail=await responseError(response);fail('Server returned HTTP '+response.status+(detail?': '+detail:'')+'. The change was not confirmed.');}
+ if(!response.ok){const detail=await responseError(response);fail('Server returned HTTP '+response.status+(detail?': '+detail+' The change was not confirmed.':'. The change was not confirmed.'));}
  let result;try{result=await response.json();}catch{fail('The server returned an unreadable response. The change may have been saved, but its edit key may not have arrived. Do not retry blindly.');}
  if(typeof result.id!=='string'||!/^[a-f0-9-]{36}$/.test(result.id)||result.url!==baseUrl+'/c/'+result.id)fail('The server returned an unexpected collection link. The change may have been saved.');
  createdUrl=result.url;

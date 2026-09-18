@@ -75,8 +75,10 @@ cmd_create() {
   if [[ "$status" != 2[0-9][0-9] ]]; then
     local server_error=""
     server_error=$(jq -r 'if type == "object" and (.error | type) == "string" then .error | gsub("[[:cntrl:]]+"; " ") | .[0:300] else empty end' "$TEMP_DIR/response" 2>/dev/null || true)
-    [[ -z "$server_error" ]] || server_error=": $server_error"
-    fail "Server returned HTTP $status$server_error. Artifact creation was not confirmed."
+    if [[ -n "$server_error" ]]; then
+      fail "Server returned HTTP $status: $server_error Artifact creation was not confirmed."
+    fi
+    fail "Server returned HTTP $status. Artifact creation was not confirmed."
   fi
   url=$(jq -esr --arg base "$BASE_URL" '
     select(length == 1) | .[0].url | select(type == "string") |
