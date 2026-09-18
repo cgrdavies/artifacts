@@ -33,3 +33,16 @@ test('collection publisher keeps an unverified edit receipt and never forwards i
   await assert.rejects(run(),e=>/inside the manifest folder/.test(e.stderr));assert.equal(requests.length,0);
  }finally{await new Promise(r=>server.close(r));fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('collection publisher reports a safe server validation message',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'collection-publisher-error-'));
+ const manifest=path.join(dir,'collection.json');fs.writeFileSync(path.join(dir,'a.md'),'# A');fs.writeFileSync(manifest,JSON.stringify({title:'A',pages:[{key:'a.md',title:'A',file:'a.md'}]}));
+ const server=http.createServer(async(req,res)=>{
+  res.setHeader('x-robots-tag','noindex');res.setHeader('referrer-policy','no-referrer');res.setHeader('content-type','application/json');
+  if(req.url==='/api/capabilities')return res.end(JSON.stringify({version:2,htmlIsolation:'sandbox',collections:{version:1,stablePageLinks:true,sharedExpiry:true,editTokenRequired:true}}));
+  res.statusCode=400;res.end(JSON.stringify({error:'The document has unsupported markup.\nCheck its links.'}));
+ });
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
+ try{await assert.rejects(exec(process.execPath,[publisher,manifest],{env:{...process.env,ARTIFACTS_URL:base},timeout:10000}),e=>/HTTP 400: The document has unsupported markup\. Check its links\./.test(e.stderr));}
+ finally{await new Promise(r=>server.close(r));fs.rmSync(dir,{recursive:true,force:true});}
+});

@@ -11,7 +11,22 @@ export const DOCUMENT_CSP = "default-src 'none'; script-src 'self'; style-src 's
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    const sendJson = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      if (res.statusCode >= 400 && body && typeof body === "object" && "error" in body && typeof body.error === "string") {
+        res.locals.rejectionReason = body.error;
+      }
+      return sendJson(body);
+    }) as typeof res.json;
+    res.on("finish", () => {
+      if (res.statusCode >= 500 || (res.statusCode >= 400 && req.path.startsWith("/api/"))) {
+        // Only fixed server messages are captured; never log queries, headers or uploaded content.
+        console.warn(JSON.stringify({ event: "artifact_request_rejected", method: req.method, path: req.path, status: res.statusCode,
+          ...(res.locals.rejectionReason ? { reason: res.locals.rejectionReason } : {}), durationMs: Date.now() - startedAt }));
+      }
+    });
     res.set({
       "X-Robots-Tag": ROBOTS,
       "Referrer-Policy": "no-referrer",

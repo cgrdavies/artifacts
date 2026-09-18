@@ -31,9 +31,9 @@ try{
  assert.equal(await (await get('/'+created.id+'/content')).text(),source);
  assert.equal(await (await get('/'+created.id+'/download')).text(),source);
  checks.push('Markdoc blocks, code/diff/tree/diagram markup, saved source, no external page assets');
- const markdown=await create({type:'markdown',content:'# Plain Markdown\n\n**Readable** notes.'});
- assert.match(await (await get('/'+markdown.id)).text(),/<strong>Readable<\/strong>/);
- checks.push('plain Markdown remains supported');
+ const markdown=await create({type:'markdown',content:'# Plain Markdown\n\n**Readable\nnotes** stay bold across a source line break.'});
+ assert.match(await (await get('/'+markdown.id)).text(),/<strong>Readable\s+notes<\/strong>/);
+ checks.push('plain Markdown and multiline emphasis remain supported');
  const bytes=Buffer.from([0,1,2,127,128,254,255]);const raw=await create({type:'raw',content:bytes.toString('base64'),filename:'smoke.bin',contentType:'application/octet-stream'});
  r=await get('/'+raw.id);assert.deepEqual(Buffer.from(await r.arrayBuffer()),bytes);assert.match(r.headers.get('content-disposition'),/attachment/);
  const maximum=Buffer.alloc(10*1024*1024,42);const big=await create({type:'raw',content:maximum.toString('base64'),filename:'ten-mib.bin'});

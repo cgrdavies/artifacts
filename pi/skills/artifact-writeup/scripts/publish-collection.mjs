@@ -51,10 +51,11 @@ try {
  }
  const payload={title:manifest.title,pages:pages.map(({source,sha256,...p})=>p)};
  if(!updateId)for(const p of payload.pages)delete p.id;
+ const responseError=async response=>{try{const body=await response.json();if(typeof body?.error==='string')return body.error.replace(/[\u0000-\u001f\u007f-\u009f]+/g,' ').slice(0,300);}catch{}return '';};
  let response;
  try { response=await fetch(baseUrl+'/api/collections'+(updateId?'/'+updateId:''),{method:updateId?'PUT':'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{'content-type':'application/json',...(editToken?{authorization:'Bearer '+editToken}:{})},body:JSON.stringify(payload)}); }
  catch { fail('The request failed. Its result may be unknown; check the collection before trying again.'); }
- if(!response.ok)fail('Server returned HTTP '+response.status+'. The change was not confirmed.');
+ if(!response.ok){const detail=await responseError(response);fail('Server returned HTTP '+response.status+(detail?': '+detail:'')+'. The change was not confirmed.');}
  let result;try{result=await response.json();}catch{fail('The server returned an unreadable response. The change may have been saved, but its edit key may not have arrived. Do not retry blindly.');}
  if(typeof result.id!=='string'||!/^[a-f0-9-]{36}$/.test(result.id)||result.url!==baseUrl+'/c/'+result.id)fail('The server returned an unexpected collection link. The change may have been saved.');
  createdUrl=result.url;

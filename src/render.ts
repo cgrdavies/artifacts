@@ -75,6 +75,13 @@ export function renderDocument(content: string, resolveLink?: (href: string) => 
   const ast = Markdoc.parse(tokens);
   const codeBlocks = new Map<string, string>();
   const headingIds = new Set<string>();
+  // CommonMark permits line breaks inside emphasis and links. Markdoc parses
+  // them correctly but omits break nodes from these schemas, so its validator
+  // otherwise rejects ordinary prose wrapped across source lines.
+  const inlineChildren = (schema: Schema): Schema => ({
+    ...schema,
+    children: [...(schema.children ?? []), 'softbreak', 'hardbreak'] as Schema['children'],
+  });
   const config: Config = {
     tags,
     nodes: {
@@ -89,8 +96,11 @@ export function renderDocument(content: string, resolveLink?: (href: string) => 
           return new Tag(`h${node.attributes.level}`, { id }, node.transformChildren(cfg));
         },
       },
+      strong: inlineChildren(Markdoc.nodes.strong),
+      em: inlineChildren(Markdoc.nodes.em),
+      s: inlineChildren(Markdoc.nodes.s),
       link: {
-        ...Markdoc.nodes.link,
+        ...inlineChildren(Markdoc.nodes.link),
         transform(node, cfg) {
           const href = resolveLink ? resolveLink(String(node.attributes.href)) : String(node.attributes.href);
           if (!safeUrl(href, false)) throw new Error('Unsafe link URL');

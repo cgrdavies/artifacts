@@ -96,6 +96,9 @@ test('CLI posts supported formats and handles failures without live service call
       responseBody = '404 page not found';
       failure(await invoke(['--type', 'markdown', '--content', 'x']), new RegExp(`HTTP ${status}`));
     }
+    responseStatus = 400;
+    responseBody = JSON.stringify({ error: 'The document has unsupported markup.' });
+    failure(await invoke(['--type', 'markdown', '--content', 'x']), /HTTP 400: The document has unsupported markup\./);
     responseStatus = 201;
     for (const body of ['not JSON', '{}', JSON.stringify({ url: 'https://evil.example/a/id' }), JSON.stringify({ url: `${base}.evil.example/a/id` }), JSON.stringify({ url: `${base}/a/id\nextra` }), JSON.stringify({ url: `${base}/a/id\\evil` }), JSON.stringify({ url: 1 }), `${JSON.stringify({ url })}\n${JSON.stringify({ url })}`]) {
       responseBody = body;
